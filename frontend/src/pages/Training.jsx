@@ -31,11 +31,23 @@ const Training = () => {
 
     // Get frequency data
     analyser.getByteFrequencyData(dataArray);
-    setFrequencyData(Array.from(dataArray));
+    const freqData = Array.from(dataArray);
+    setFrequencyData(freqData);
 
     // Get waveform data  
     analyser.getFloatTimeDomainData(waveArray);
-    setWaveformData(Array.from(waveArray));
+    const waveData = Array.from(waveArray);
+    setWaveformData(waveData);
+
+    // Debug: Log data to ensure it's flowing
+    if (Math.random() < 0.01) { // Log 1% of the time
+      console.log('Visualizer data:', { 
+        freqDataLength: freqData.length, 
+        waveDataLength: waveData.length,
+        freqMax: Math.max(...freqData),
+        waveRange: [Math.min(...waveData), Math.max(...waveData)]
+      });
+    }
 
     if (isPlaying) {
       animationRef.current = requestAnimationFrame(updateVisualizations);
@@ -74,9 +86,9 @@ const Training = () => {
         analyser.smoothingTimeConstant = 0.8;
         analyserRef.current = analyser;
         
-        // Connect: analyser -> destination and masterGain -> analyser 
-        analyser.connect(audioContext.destination);
+        // Correct audio routing: masterGain -> analyser -> destination
         masterGain.connect(analyser);
+        analyser.connect(audioContext.destination);
         
         setIsPlaying(true);
         

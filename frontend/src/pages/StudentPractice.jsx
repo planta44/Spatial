@@ -100,38 +100,40 @@ const StudentPractice = () => {
 
   const renderProjectLibrary = () => (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h3 className="text-2xl font-bold">My Projects</h3>
-        <div className="flex gap-2">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <h3 className="text-xl sm:text-2xl font-bold">My Projects</h3>
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
           <button
             onClick={() => handleCreateNew('composition')}
-            className="flex items-center gap-2 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+            className="flex items-center justify-center gap-2 bg-blue-500 text-white px-3 sm:px-4 py-2 rounded hover:bg-blue-600 text-sm sm:text-base whitespace-nowrap"
           >
             <Plus size={16} />
-            New Composition
+            <span className="hidden sm:inline">New Composition</span>
+            <span className="sm:hidden">Compose</span>
           </button>
           <button
             onClick={() => handleCreateNew('spatial')}
-            className="flex items-center gap-2 bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
+            className="flex items-center justify-center gap-2 bg-green-500 text-white px-3 sm:px-4 py-2 rounded hover:bg-green-600 text-sm sm:text-base whitespace-nowrap"
           >
             <Plus size={16} />
-            New Spatial Project
+            <span className="hidden sm:inline">New Spatial Project</span>
+            <span className="sm:hidden">Spatial</span>
           </button>
         </div>
       </div>
 
-      {/* Filter Tabs */}
-      <div className="flex gap-4 border-b">
+      {/* Filter Tabs - Mobile Responsive */}
+      <div className="flex gap-2 sm:gap-4 border-b overflow-x-auto">
         {['all', 'composition', 'spatial'].map(filter => (
           <button
             key={filter}
-            className={`pb-2 px-1 border-b-2 capitalize ${
+            className={`pb-2 px-2 sm:px-3 border-b-2 capitalize text-sm sm:text-base whitespace-nowrap flex-shrink-0 ${
               filter === 'all' 
                 ? 'border-blue-500 text-blue-600' 
                 : 'border-transparent text-gray-600 hover:text-gray-800'
             }`}
           >
-            {filter} Projects
+            {filter === 'all' ? 'All' : filter} Projects
           </button>
         ))}
       </div>
@@ -177,17 +179,19 @@ const StudentPractice = () => {
                   setCurrentProject(project);
                   setActiveTab(project.type === 'composition' ? 'compose' : 'spatialize');
                 }}
-                className="flex-1 bg-gray-100 text-gray-700 py-2 px-3 rounded hover:bg-gray-200 text-sm"
+                className="flex-1 bg-blue-500 text-white py-2 px-3 rounded hover:bg-blue-600 text-sm font-medium transition-colors"
               >
+                <Play size={14} className="inline mr-1" />
                 Open
               </button>
               <button 
                 onClick={() => handleShareProject(project.id)}
-                className={`p-2 rounded ${
+                className={`p-2 rounded transition-colors ${
                   project.isShared 
-                    ? 'bg-green-100 text-green-700' 
+                    ? 'bg-green-100 text-green-700 hover:bg-green-200' 
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
+                title={project.isShared ? 'Shared' : 'Share project'}
               >
                 <Share size={14} />
               </button>
@@ -448,29 +452,30 @@ const StudentPractice = () => {
           <p className="text-gray-600">Create, experiment, and learn with AI composition and spatial audio tools</p>
         </div>
 
-        {/* Navigation Tabs */}
+        {/* Navigation Tabs - Mobile Responsive */}
         <div className="mb-8">
           <div className="border-b border-gray-200">
-            <nav className="-mb-px flex space-x-8">
+            <nav className="-mb-px flex overflow-x-auto">
               {[
-                { id: 'projects', label: 'My Projects', icon: Folder },
-                { id: 'compose', label: 'AI Composer', icon: Music },
-                { id: 'spatialize', label: 'Spatial Studio', icon: Volume2 },
-                { id: 'submissions', label: 'Assignments', icon: Upload }
+                { id: 'projects', label: 'My Projects', icon: Folder, shortLabel: 'Projects' },
+                { id: 'compose', label: 'AI Composer', icon: Music, shortLabel: 'Compose' },
+                { id: 'spatialize', label: 'Spatial Studio', icon: Volume2, shortLabel: 'Spatial' },
+                { id: 'submissions', label: 'Assignments', icon: Upload, shortLabel: 'Assignments' }
               ].map(tab => {
                 const Icon = tab.icon;
                 return (
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
-                    className={`flex items-center gap-2 py-4 px-1 border-b-2 font-medium text-sm ${
+                    className={`flex items-center gap-2 py-4 px-3 sm:px-6 border-b-2 font-medium text-xs sm:text-sm whitespace-nowrap min-w-0 flex-shrink-0 ${
                       activeTab === tab.id
-                        ? 'border-blue-500 text-blue-600'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                        ? 'border-blue-500 text-blue-600 bg-blue-50'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 hover:bg-gray-50'
                     }`}
                   >
-                    <Icon size={16} />
-                    {tab.label}
+                    <Icon size={16} className="flex-shrink-0" />
+                    <span className="hidden sm:inline">{tab.label}</span>
+                    <span className="sm:hidden">{tab.shortLabel}</span>
                   </button>
                 );
               })}
