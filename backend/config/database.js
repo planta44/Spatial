@@ -11,10 +11,7 @@ if (process.env.DATABASE_URL) {
     protocol: 'postgres',
     logging: false,
     dialectOptions: {
-      ssl: process.env.NODE_ENV === 'production' ? {
-        require: true,
-        rejectUnauthorized: false
-      } : false
+      ssl: false
     },
     pool: {
       max: 5,
@@ -57,6 +54,10 @@ if (process.env.DATABASE_URL) {
 
 const connectDB = async () => {
   try {
+    console.log('🔍 Attempting database connection...');
+    console.log(`🔍 DATABASE_URL exists: ${!!process.env.DATABASE_URL}`);
+    console.log(`🔍 NODE_ENV: ${process.env.NODE_ENV}`);
+    
     await sequelize.authenticate();
     console.log('✅ PostgreSQL connected successfully');
     console.log(`📊 Database: ${process.env.DATABASE_URL ? process.env.DATABASE_URL.split('/').pop().split('?')[0] : process.env.DB_NAME || 'spatial_ai'}`);
@@ -67,7 +68,16 @@ const connectDB = async () => {
       console.log('📋 Database models synchronized');
     }
   } catch (error) {
-    console.error('❌ PostgreSQL connection error:', error.message);
+    console.error('❌ PostgreSQL connection error:');
+    console.error('❌ Error message:', error.message);
+    console.error('❌ Error code:', error.code);
+    console.error('❌ Full error:', error);
+    console.error('🔍 Environment variables:');
+    console.error('  - DATABASE_URL:', process.env.DATABASE_URL ? 'SET' : 'NOT SET');
+    console.error('  - DB_HOST:', process.env.DB_HOST || 'NOT SET');
+    console.error('  - DB_NAME:', process.env.DB_NAME || 'NOT SET');
+    console.error('  - DB_USER:', process.env.DB_USER || 'NOT SET');
+    console.error('  - DB_PASSWORD:', process.env.DB_PASSWORD ? 'SET' : 'NOT SET');
     process.exit(1);
   }
 };
