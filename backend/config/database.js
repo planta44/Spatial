@@ -1,14 +1,21 @@
 const { Sequelize } = require('sequelize');
 
-const sequelize = new Sequelize(
-  process.env.DB_NAME || 'spatial_ai',
-  process.env.DB_USER || 'postgres',
-  process.env.DB_PASSWORD || 'postgres',
-  {
-    host: process.env.DB_HOST || 'localhost',
-    port: process.env.DB_PORT || 5432,
+// Create Sequelize instance with better error handling
+let sequelize;
+
+if (process.env.DATABASE_URL) {
+  // Production: Use DATABASE_URL from Render PostgreSQL
+  console.log('🔌 Using DATABASE_URL for production');
+  sequelize = new Sequelize(process.env.DATABASE_URL, {
     dialect: 'postgres',
-    logging: process.env.NODE_ENV === 'development' ? console.log : false,
+    protocol: 'postgres',
+    logging: false,
+    dialectOptions: {
+      ssl: process.env.NODE_ENV === 'production' ? {
+        require: true,
+        rejectUnauthorized: false
+      } : false
+    },
     pool: {
       max: 5,
       min: 0,
@@ -20,14 +27,39 @@ const sequelize = new Sequelize(
       underscored: true,
       underscoredAll: true
     }
-  }
-);
+  });
+} else {
+  // Development: Use individual environment variables
+  console.log('🔌 Using individual DB variables for development');
+  sequelize = new Sequelize(
+    process.env.DB_NAME || 'spatial_ai',
+    process.env.DB_USER || 'postgres',
+    process.env.DB_PASSWORD || 'postgres',
+    {
+      host: process.env.DB_HOST || 'localhost',
+      port: process.env.DB_PORT || 5432,
+      dialect: 'postgres',
+      logging: process.env.NODE_ENV === 'development' ? console.log : false,
+      pool: {
+        max: 5,
+        min: 0,
+        acquire: 30000,
+        idle: 10000
+      },
+      define: {
+        timestamps: true,
+        underscored: true,
+        underscoredAll: true
+      }
+    }
+  );
+}
 
 const connectDB = async () => {
   try {
     await sequelize.authenticate();
     console.log('✅ PostgreSQL connected successfully');
-    console.log(`📊 Database: ${process.env.DB_NAME || 'spatial_ai'}`);
+    console.log(`📊 Database: ${process.env.DATABASE_URL ? process.env.DATABASE_URL.split('/').pop().split('?')[0] : process.env.DB_NAME || 'spatial_ai'}`);
     
     // Sync all models
     if (process.env.NODE_ENV === 'development') {

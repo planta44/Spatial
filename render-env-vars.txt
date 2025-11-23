@@ -1,0 +1,23 @@
+# Copy these environment variables to your Render Web Service:
+
+# Database Connection - USE INTERNAL DATABASE URL
+DATABASE_URL=postgresql://spatial_ai_user:password@hostname:port/spatial_ai
+
+# OR use individual variables (if DATABASE_URL doesn't work):
+DB_HOST=your-db-host-from-render
+DB_PORT=5432
+DB_NAME=spatial_ai
+DB_USER=spatial_ai_user
+DB_PASSWORD=your-db-password-from-render
+
+# Other required variables
+NODE_ENV=production
+PORT=10000
+JWT_SECRET=your-super-secret-jwt-key-at-least-32-characters-long
+JWT_EXPIRE=30d
+FRONTEND_URL=https://your-netlify-app.netlify.app
+
+# Optional API keys (add if you use them)
+SPOTIFY_CLIENT_ID=your_spotify_client_id
+SPOTIFY_CLIENT_SECRET=your_spotify_client_secret
+OPENAI_API_KEY=your_openai_api_key

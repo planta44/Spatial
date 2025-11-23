@@ -102,18 +102,6 @@ app.use((req, res) => {
 
 const PORT = process.env.PORT || 5001;
 
-// Handle production database URL
-if (process.env.DATABASE_URL) {
-  // Use DATABASE_URL for production (Render provides this)
-  // Parse the URL and set individual env vars
-  const url = new URL(process.env.DATABASE_URL);
-  process.env.DB_HOST = url.hostname;
-  process.env.DB_PORT = url.port;
-  process.env.DB_NAME = url.pathname.slice(1);
-  process.env.DB_USER = url.username;
-  process.env.DB_PASSWORD = url.password;
-}
-
 app.listen(PORT, () => {
   console.log(`\n🚀 Spatial AI API Server running on port ${PORT}`);
   console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
