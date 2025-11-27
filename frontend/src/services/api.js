@@ -75,4 +75,39 @@ export const spatialAPI = {
   analyze: (id) => api.post(`/spatial/${id}/analyze`),
 };
 
+// Spatial projects (student spatial studio) endpoints
+export const spatialProjectsAPI = {
+  // Get current user's spatial projects
+  getMy: (params) => api.get('/spatial-projects', { params }),
+
+  // Get single spatial project by id
+  getById: (id) => api.get(`/spatial-projects/${id}`),
+
+  // Create a new spatial project
+  create: (data) => api.post('/spatial-projects', data),
+
+  // Save full project state (composition + spatial config)
+  saveState: (id, projectData) =>
+    api.put(`/spatial-projects/${id}/save-state`, { projectData }),
+
+  // Update only spatial configuration (positions, settings)
+  updateSpatialConfig: (id, data) =>
+    api.put(`/spatial-projects/${id}/spatial-config`, data),
+
+  // Share/unshare project
+  share: (id, isPublic) =>
+    api.put(`/spatial-projects/${id}/share`, { isPublic }),
+};
+
+export const curriculumAPI = {
+  generate: (data) => api.post('/curriculum/generate', data),
+};
+
+export const transcriptionAPI = {
+  transcribePerformance: (formData) =>
+    api.post('/transcription/performance', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+};
+
 export default api;

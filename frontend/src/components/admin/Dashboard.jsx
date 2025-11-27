@@ -1,7 +1,18 @@
-import { Users, GraduationCap, FileText, TrendingUp, Activity, LogOut } from 'lucide-react';
+import { useState } from 'react';
+import { Users, GraduationCap, FileText, TrendingUp, Activity, LogOut, BookOpen, Wand2 } from 'lucide-react';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { curriculumAPI } from '../../services/api';
 
 const Dashboard = ({ onLogout }) => {
+  const [curriculumTitle, setCurriculumTitle] = useState('Advanced Conducting in the Digital Age');
+  const [curriculumWeeks, setCurriculumWeeks] = useState(14);
+  const [curriculumHoursPerWeek, setCurriculumHoursPerWeek] = useState(3);
+  const [curriculumDifficulty, setCurriculumDifficulty] = useState('intermediate');
+  const [curriculumCategory, setCurriculumCategory] = useState('teacher-training');
+  const [curriculumResult, setCurriculumResult] = useState(null);
+  const [curriculumLoading, setCurriculumLoading] = useState(false);
+  const [curriculumError, setCurriculumError] = useState('');
+
   const stats = [
     { icon: Users, label: 'Total Users', value: '1,234', change: '+12%', color: 'text-blue-600', bg: 'bg-blue-100' },
     { icon: GraduationCap, label: 'Active Courses', value: '45', change: '+8%', color: 'text-green-600', bg: 'bg-green-100' },
@@ -34,6 +45,36 @@ const Dashboard = ({ onLogout }) => {
     { id: 3, user: 'Dr. Sarah Wanjiru', action: 'Updated training module', resource: 'Ambisonic Techniques', time: '1 day ago' },
     { id: 4, user: 'Admin', action: 'System maintenance', resource: 'Server update', time: '2 days ago' },
   ];
+
+  const handleGenerateCurriculum = async (event) => {
+    if (event && event.preventDefault) {
+      event.preventDefault();
+    }
+
+    try {
+      setCurriculumLoading(true);
+      setCurriculumError('');
+
+      const payload = {
+        title: curriculumTitle,
+        weeks: Number(curriculumWeeks) || 14,
+        hoursPerWeek: Number(curriculumHoursPerWeek) || 3,
+        difficulty: curriculumDifficulty,
+        category: curriculumCategory,
+      };
+
+      const response = await curriculumAPI.generate(payload);
+      const data = response.data || {};
+      const curriculum = data.curriculum || data.data?.curriculum || null;
+
+      setCurriculumResult(curriculum);
+    } catch (error) {
+      console.error('Curriculum generation error:', error);
+      setCurriculumError('Failed to generate curriculum. Please try again.');
+    } finally {
+      setCurriculumLoading(false);
+    }
+  };
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-12">
@@ -157,6 +198,132 @@ const Dashboard = ({ onLogout }) => {
           <h4 className="font-semibold text-gray-900 mb-2">View Reports</h4>
           <p className="text-sm text-gray-600">Generate analytics and reports</p>
         </button>
+      </div>
+
+      <div className="mt-10 grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="bg-purple-100 w-10 h-10 rounded-lg flex items-center justify-center">
+                <BookOpen className="h-5 w-5 text-purple-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Curriculum Studio</h3>
+                <p className="text-sm text-gray-600">Generate a full term syllabus for teacher training and spatial audio.</p>
+              </div>
+            </div>
+          </div>
+
+          <form onSubmit={handleGenerateCurriculum} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Course title</label>
+              <input
+                type="text"
+                value={curriculumTitle}
+                onChange={(e) => setCurriculumTitle(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                placeholder="e.g. Spatial Audio for Music Education"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Weeks</label>
+                <input
+                  type="number"
+                  min="4"
+                  max="52"
+                  value={curriculumWeeks}
+                  onChange={(e) => setCurriculumWeeks(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Hours per week</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="10"
+                  value={curriculumHoursPerWeek}
+                  onChange={(e) => setCurriculumHoursPerWeek(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Difficulty</label>
+                <select
+                  value={curriculumDifficulty}
+                  onChange={(e) => setCurriculumDifficulty(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+                >
+                  <option value="beginner">Beginner</option>
+                  <option value="intermediate">Intermediate</option>
+                  <option value="advanced">Advanced</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                <select
+                  value={curriculumCategory}
+                  onChange={(e) => setCurriculumCategory(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+                >
+                  <option value="teacher-training">Teacher Training</option>
+                  <option value="spatial-audio">Spatial Audio</option>
+                  <option value="ai-composition">AI Composition</option>
+                  <option value="policy">Policy</option>
+                  <option value="research">Research</option>
+                </select>
+              </div>
+            </div>
+
+            {curriculumError && (
+              <p className="text-sm text-red-600">{curriculumError}</p>
+            )}
+
+            <button
+              type="submit"
+              disabled={curriculumLoading || !curriculumTitle.trim()}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+            >
+              <Wand2 className="h-4 w-4" />
+              {curriculumLoading ? 'Generating...' : 'Generate Curriculum'}
+            </button>
+          </form>
+        </div>
+
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">Preview</h3>
+          {!curriculumResult && (
+            <p className="text-sm text-gray-600">
+              Use the Curriculum Studio form to generate a week-by-week outline. The first modules will appear here for quick review.
+            </p>
+          )}
+          {curriculumResult && (
+            <div className="space-y-3">
+              <div>
+                <h4 className="font-semibold text-gray-900">{curriculumResult.title}</h4>
+                <p className="text-sm text-gray-600">{curriculumResult.description}</p>
+              </div>
+              <p className="text-sm text-gray-600">
+                {(curriculumResult.meta && curriculumResult.meta.weeks) || (curriculumResult.modules && curriculumResult.modules.length) || 0} weeks 
+                • {curriculumResult.difficulty && curriculumResult.difficulty.toUpperCase()} 
+                • {curriculumResult.category}
+              </p>
+              <div className="max-h-64 overflow-y-auto border-t border-gray-200 pt-3">
+                {(curriculumResult.modules || []).slice(0, 6).map((mod) => (
+                  <div key={mod.week} className="mb-3">
+                    <p className="text-sm font-medium text-gray-900">Week {mod.week}: {mod.title}</p>
+                    <p className="text-xs text-gray-600">{mod.overview}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Music, 
   Volume2, 
@@ -10,10 +10,16 @@ import {
   Download,
   Upload,
   Folder,
-  Star
+  Star,
+  Mic,
+  MicOff,
+  Sparkles,
+  Activity
 } from 'lucide-react';
 import MusicEditor from '../components/music/MusicEditor';
 import SpatialAudioInterface from '../components/spatial/SpatialAudioInterface';
+import SpatialCanvas from '../components/spatial/SpatialCanvas';
+import { spatialProjectsAPI, transcriptionAPI } from '../services/api';
 
 const StudentPractice = () => {
   const [activeTab, setActiveTab] = useState('compose');
@@ -22,80 +28,308 @@ const StudentPractice = () => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [composition, setComposition] = useState(null);
   const [spatialProject, setSpatialProject] = useState(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordedBlob, setRecordedBlob] = useState(null);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [transcriptionError, setTranscriptionError] = useState('');
+  const [conductorTempo, setConductorTempo] = useState(80);
+  const [conductorPattern, setConductorPattern] = useState('4/4');
+  const [currentBeat, setCurrentBeat] = useState(1);
+  const [isConducting, setIsConducting] = useState(false);
 
-  // Mock data for student projects
+  const mediaRecorderRef = useRef(null);
+  const recordedChunksRef = useRef([]);
+
+  // Load student's spatial projects from backend
   useEffect(() => {
-    const mockProjects = [
-      {
-        id: 1,
-        title: 'My First Melody',
-        type: 'composition',
-        lastModified: '2024-11-20',
-        status: 'draft',
-        isShared: false,
-        rating: 4.2
-      },
-      {
-        id: 2,
-        title: 'Forest Soundscape',
-        type: 'spatial',
-        lastModified: '2024-11-19',
-        status: 'completed',
-        isShared: true,
-        rating: 4.7
-      },
-      {
-        id: 3,
-        title: 'Jazz Harmony Exercise',
-        type: 'composition',
-        lastModified: '2024-11-18',
-        status: 'submitted',
-        isShared: false,
-        rating: 4.0
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    const fetchProjects = async () => {
+      try {
+        const response = await spatialProjectsAPI.getMy();
+        const data = response.data || {};
+
+        // Backend successResponse likely wraps projects in { projects, pagination }
+        const apiProjects =
+          data.projects ||
+          data.data?.projects ||
+          data.rows ||
+          [];
+
+        const mapped = apiProjects.map((p) => ({
+          ...p,
+          type:
+            p.projectData?.type ||
+            (p.projectData?.composition ? 'composition' : 'spatial'),
+          lastModified: (p.updatedAt || p.createdAt || '').slice(0, 10),
+          isShared: p.isPublic ?? false,
+          rating: p.rating ?? 0,
+        }));
+
+        setProjects(mapped);
+      } catch (error) {
+        console.error('Error loading spatial projects:', error);
       }
-    ];
-    setProjects(mockProjects);
+    };
+
+    fetchProjects();
   }, []);
 
-  const handleCreateNew = (type) => {
-    const newProject = {
-      id: Date.now(),
-      title: type === 'composition' ? 'New Composition' : 'New Spatial Project',
-      type: type,
-      lastModified: new Date().toISOString().split('T')[0],
-      status: 'draft',
-      isShared: false,
-      rating: 0
-    };
-    setProjects([newProject, ...projects]);
-    setCurrentProject(newProject);
-    setActiveTab(type === 'composition' ? 'compose' : 'spatialize');
+  useEffect(() => {
+    if (!isConducting) return;
+
+    const beatsPerBar = conductorPattern === '3/4' ? 3 : conductorPattern === '2/4' ? 2 : 4;
+    const intervalMs = 60000 / Math.max(40, Math.min(200, conductorTempo || 80));
+    const interval = setInterval(() => {
+      setCurrentBeat((prev) => (prev % beatsPerBar) + 1);
+    }, intervalMs);
+
+    return () => clearInterval(interval);
+  }, [isConducting, conductorTempo, conductorPattern]);
+
+  const handleSelectProject = (project) => {
+    setCurrentProject(project);
+
+    const projectData = project.projectData || {};
+    setComposition(projectData.composition || null);
+    setSpatialProject(projectData.spatial || null);
+
+    setActiveTab(
+      (project.projectData?.type || project.type) === 'composition'
+        ? 'compose'
+        : 'spatialize'
+    );
   };
 
-  const handleSaveProject = (projectData) => {
-    if (currentProject) {
-      // Update existing project
-      setProjects(projects.map(p => 
-        p.id === currentProject.id 
-          ? { ...p, lastModified: new Date().toISOString().split('T')[0] }
-          : p
-      ));
-      
-      // Save project data based on type
-      if (currentProject.type === 'composition') {
-        setComposition(projectData);
-      } else {
-        setSpatialProject(projectData);
-      }
+  const handleCreateNew = async (type) => {
+    try {
+      const title = type === 'composition' ? 'New Composition' : 'New Spatial Project';
+
+      // Create bare spatial project record
+      const response = await spatialProjectsAPI.create({
+        title,
+        description: '',
+      });
+
+      const data = response.data || {};
+      const created = data.project || data.data?.project || data;
+
+      const initialProjectData = {
+        type,
+        metadata: {
+          title,
+          bpm: 120,
+          key: 'C major',
+          timeSignature: '4/4',
+        },
+        composition:
+          type === 'composition'
+            ? {
+                melody: [],
+                key: 'C major',
+                tempo: 120,
+              }
+            : null,
+        spatial: {
+          room: { width: 10, height: 3, depth: 10 },
+          listener: { x: 0, y: 0, z: 0 },
+          sources: [],
+        },
+      };
+
+      // Persist initial state
+      await spatialProjectsAPI.saveState(created.id, initialProjectData);
+
+      const fullProject = {
+        ...created,
+        projectData: initialProjectData,
+        type,
+        lastModified: (created.updatedAt || created.createdAt || '').slice(0, 10),
+        isShared: created.isPublic ?? false,
+        rating: created.rating ?? 0,
+      };
+
+      setProjects((prev) => [fullProject, ...prev]);
+      handleSelectProject(fullProject);
+    } catch (error) {
+      console.error('Error creating new project:', error);
     }
   };
 
-  const handleShareProject = (projectId) => {
-    setProjects(projects.map(p => 
-      p.id === projectId 
-        ? { ...p, isShared: !p.isShared }
-        : p
-    ));
+  const handleStartRecording = async () => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert('Recording is not supported in this browser. You can upload an audio file instead.');
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      recordedChunksRef.current = [];
+
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          recordedChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        const blob = new Blob(recordedChunksRef.current, { type: 'audio/webm' });
+        setRecordedBlob(blob);
+        stream.getTracks().forEach((track) => track.stop());
+      };
+
+      recorder.start();
+      mediaRecorderRef.current = recorder;
+      setIsRecording(true);
+      setTranscriptionError('');
+    } catch (error) {
+      console.error('Error starting recording:', error);
+      alert('Unable to access microphone. Please check permissions or upload an audio file instead.');
+    }
+  };
+
+  const handleStopRecording = () => {
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== 'inactive') {
+      recorder.stop();
+    }
+    setIsRecording(false);
+  };
+
+  const handleAudioFileChange = (event) => {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    setRecordedBlob(file);
+    setTranscriptionError('');
+  };
+
+  const handleSendToTranscription = async () => {
+    if (!recordedBlob) {
+      alert('Please record or upload an audio clip first.');
+      return;
+    }
+
+    try {
+      setIsTranscribing(true);
+      setTranscriptionError('');
+
+      const formData = new FormData();
+      formData.append('audio', recordedBlob, 'performance.webm');
+      formData.append('key', 'C major');
+      formData.append('tempo', '120');
+      formData.append('length', '8');
+      formData.append('style', 'classical');
+
+      const response = await transcriptionAPI.transcribePerformance(formData);
+      const data = response.data || {};
+      const compositionData = data.composition || {
+        melody: data.melody,
+        key: data.key || 'C major',
+        tempo: data.tempo || 120,
+      };
+
+      if (compositionData && compositionData.melody) {
+        setComposition(compositionData);
+        setActiveTab('compose');
+      } else {
+        setTranscriptionError('No melody data returned from transcription service.');
+      }
+    } catch (error) {
+      console.error('Error sending audio for transcription:', error);
+      setTranscriptionError('Failed to transcribe audio. Please try again.');
+    } finally {
+      setIsTranscribing(false);
+    }
+  };
+
+  const handleSaveProject = async (sectionData) => {
+    if (!currentProject) return;
+
+    try {
+      const existingData = currentProject.projectData || {};
+      const type = existingData.type || currentProject.type || 'spatial';
+
+      const updatedProjectData = {
+        ...existingData,
+        type,
+        metadata: existingData.metadata || {
+          title: currentProject.title,
+          bpm: 120,
+          key: 'C major',
+          timeSignature: '4/4',
+        },
+        composition:
+          type === 'composition'
+            ? sectionData || existingData.composition || null
+            : existingData.composition || null,
+        spatial:
+          type !== 'composition'
+            ? sectionData || existingData.spatial || null
+            : existingData.spatial || null,
+      };
+
+      const response = await spatialProjectsAPI.saveState(
+        currentProject.id,
+        updatedProjectData
+      );
+
+      const data = response.data || {};
+      const savedProject = data.project || data.data?.project || currentProject;
+
+      const mappedProject = {
+        ...savedProject,
+        projectData: updatedProjectData,
+        type,
+        lastModified: (savedProject.updatedAt || savedProject.createdAt || '').slice(
+          0,
+          10
+        ),
+        isShared: savedProject.isPublic ?? false,
+        rating: savedProject.rating ?? 0,
+      };
+
+      // Update lists and local section state
+      setProjects((prev) =>
+        prev.map((p) => (p.id === mappedProject.id ? mappedProject : p))
+      );
+      setCurrentProject(mappedProject);
+
+      if (type === 'composition') {
+        setComposition(updatedProjectData.composition || null);
+      } else {
+        setSpatialProject(updatedProjectData.spatial || null);
+      }
+    } catch (error) {
+      console.error('Error saving project:', error);
+    }
+  };
+
+  const handleShareProject = async (projectId) => {
+    const target = projects.find((p) => p.id === projectId);
+    if (!target) return;
+
+    try {
+      const nextShared = !target.isShared;
+      await spatialProjectsAPI.share(projectId, nextShared);
+
+      setProjects((prev) =>
+        prev.map((p) =>
+          p.id === projectId
+            ? { ...p, isShared: nextShared, isPublic: nextShared }
+            : p
+        )
+      );
+
+      if (currentProject?.id === projectId) {
+        setCurrentProject((prev) =>
+          prev ? { ...prev, isShared: nextShared, isPublic: nextShared } : prev
+        );
+      }
+    } catch (error) {
+      console.error('Error sharing project:', error);
+    }
   };
 
   const renderProjectLibrary = () => (
@@ -175,10 +409,7 @@ const StudentPractice = () => {
             
             <div className="flex gap-2">
               <button 
-                onClick={() => {
-                  setCurrentProject(project);
-                  setActiveTab(project.type === 'composition' ? 'compose' : 'spatialize');
-                }}
+                onClick={() => handleSelectProject(project)}
                 className="flex-1 bg-blue-500 text-white py-2 px-3 rounded hover:bg-blue-600 text-sm font-medium transition-colors"
               >
                 <Play size={14} className="inline mr-1" />
@@ -375,6 +606,101 @@ const StudentPractice = () => {
     </div>
   );
 
+  const render3DLab = () => (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h3 className="text-2xl font-bold">3D Listening & Conducting Lab</h3>
+        <div className="flex gap-2">
+          <button 
+            onClick={() => setIsConducting(!isConducting)}
+            className={`flex items-center gap-2 bg-orange-500 text-white px-4 py-2 rounded hover:bg-orange-600 ${
+              isConducting ? 'bg-red-600' : ''
+            }`}
+          >
+            <Activity size={16} />
+            {isConducting ? 'Stop Conducting' : 'Start Conducting'}
+          </button>
+        </div>
+      </div>
+
+      <SpatialCanvas
+        conductorTempo={conductorTempo}
+        conductorPattern={conductorPattern}
+        currentBeat={currentBeat}
+        isConducting={isConducting}
+        onTempoChange={(tempo) => setConductorTempo(tempo)}
+        onPatternChange={(pattern) => setConductorPattern(pattern)}
+      />
+
+      {/* Sing-to-Score Recording/Upload Workflow */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="bg-white rounded-lg shadow-md p-4 lg:col-span-1">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center">
+              <Mic className="w-4 h-4 text-purple-600" />
+            </div>
+            <p className="font-medium text-gray-900 text-sm">Sing-to-Score</p>
+          </div>
+          <p className="text-xs text-gray-600 mb-3">
+            Record or upload a short melodic idea. The platform will convert it into notes in the editor.
+          </p>
+          <div className="flex flex-wrap gap-2 mb-3">
+            <button
+              onClick={isRecording ? handleStopRecording : handleStartRecording}
+              className={`inline-flex items-center gap-2 px-3 py-2 rounded text-xs font-medium ${
+                isRecording
+                  ? 'bg-red-600 text-white hover:bg-red-700'
+                  : 'bg-purple-600 text-white hover:bg-purple-700'
+              }`}
+            >
+              {isRecording ? <MicOff size={14} /> : <Mic size={14} />}
+              {isRecording ? 'Stop Recording' : 'Start Recording'}
+            </button>
+            <label className="inline-flex items-center gap-2 px-3 py-2 rounded text-xs font-medium bg-gray-100 text-gray-800 hover:bg-gray-200 cursor-pointer">
+              <Upload size={14} />
+              <span>Upload Audio</span>
+              <input
+                type="file"
+                accept="audio/*"
+                onChange={handleAudioFileChange}
+                className="hidden"
+              />
+            </label>
+            <button
+              onClick={handleSendToTranscription}
+              disabled={!recordedBlob || isTranscribing}
+              className={`inline-flex items-center gap-2 px-3 py-2 rounded text-xs font-medium ${
+                !recordedBlob || isTranscribing
+                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  : 'bg-green-600 text-white hover:bg-green-700'
+              }`}
+            >
+              <Sparkles size={14} />
+              {isTranscribing ? 'Converting...' : 'Convert to Score'}
+            </button>
+          </div>
+          {recordedBlob && !isTranscribing && (
+            <p className="text-xs text-gray-500">
+              Audio ready ({Math.round(recordedBlob.size / 1024)} KB). Use "Convert to Score" to load it into the editor.
+            </p>
+          )}
+          {isTranscribing && (
+            <p className="text-xs text-gray-500">Analyzing your performance and building a melody…</p>
+          )}
+          {transcriptionError && (
+            <p className="text-xs text-red-600 mt-1">{transcriptionError}</p>
+          )}
+        </div>
+        <div className="bg-white rounded-lg shadow-md p-4 lg:col-span-2 text-xs text-gray-700 space-y-1">
+          <p className="font-medium text-gray-900 mb-1">Tips for better results:</p>
+          <p>• Sing or play a clear single-line melody (no chords).</p>
+          <p>• Keep recordings short (4–8 bars) with steady tempo.</p>
+          <p>• Use a quiet room and place the microphone close to the sound source.</p>
+        </div>
+      </div>
+    </div>
+  );
+
   const renderSubmissions = () => (
     <div className="space-y-6">
       <h3 className="text-2xl font-bold">Assignment Submissions</h3>
@@ -393,7 +719,7 @@ const StudentPractice = () => {
             Create an 8-note melody using the AI composition tools. Include both the original AI-generated version and your own modifications.
           </p>
           <div className="flex items-center gap-4">
-            <button className="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600">
+            <button className="bg-blue-500 text-white px-3 py-1 rounded text-sm font-medium transition-colors">
               View Submission
             </button>
             <span className="text-sm text-gray-600">Submitted: November 20, 2024</span>
@@ -416,7 +742,7 @@ const StudentPractice = () => {
             Design a 3D audio scene representing a natural environment. Use at least 4 different sound sources positioned in 3D space.
           </p>
           <div className="flex items-center gap-4">
-            <button className="bg-green-500 text-white px-3 py-1 rounded text-sm hover:bg-green-600">
+            <button className="bg-green-500 text-white px-3 py-1 rounded text-sm font-medium transition-colors">
               Continue Working
             </button>
             <span className="text-sm text-gray-600">Progress: 60%</span>
@@ -456,10 +782,11 @@ const StudentPractice = () => {
         <div className="mb-8">
           <div className="border-b border-gray-200">
             <nav className="-mb-px flex overflow-x-auto">
-              {[
+              {[/* eslint-disable indent */
                 { id: 'projects', label: 'My Projects', icon: Folder, shortLabel: 'Projects' },
                 { id: 'compose', label: 'AI Composer', icon: Music, shortLabel: 'Compose' },
                 { id: 'spatialize', label: 'Spatial Studio', icon: Volume2, shortLabel: 'Spatial' },
+                { id: 'lab', label: '3D Lab', icon: Activity, shortLabel: '3D Lab' },
                 { id: 'submissions', label: 'Assignments', icon: Upload, shortLabel: 'Assignments' }
               ].map(tab => {
                 const Icon = tab.icon;
@@ -488,6 +815,7 @@ const StudentPractice = () => {
           {activeTab === 'projects' && renderProjectLibrary()}
           {activeTab === 'compose' && renderComposer()}
           {activeTab === 'spatialize' && renderSpatializer()}
+          {activeTab === 'lab' && render3DLab()}
           {activeTab === 'submissions' && renderSubmissions()}
         </div>
       </div>

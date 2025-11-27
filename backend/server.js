@@ -13,6 +13,8 @@ const spatialRoutes = require('./routes/spatial');
 const spatialAnalyticsRoutes = require('./routes/spatialAnalytics');
 const compositionRoutes = require('./routes/compositions');
 const spatialProjectRoutes = require('./routes/spatialProjects');
+const curriculumRoutes = require('./routes/curriculum');
+const transcriptionRoutes = require('./routes/transcription');
 
 const app = express();
 
@@ -55,6 +57,8 @@ app.use('/api/spatial', spatialRoutes);
 app.use('/api/spatial-analytics', spatialAnalyticsRoutes);
 app.use('/api/compositions', compositionRoutes);
 app.use('/api/spatial-projects', spatialProjectRoutes);
+app.use('/api/curriculum', curriculumRoutes);
+app.use('/api/transcription', transcriptionRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -77,7 +81,9 @@ app.get('/', (req, res) => {
       spatial: '/api/spatial',
       spatialAnalytics: '/api/spatial-analytics',
       compositions: '/api/compositions',
-      spatialProjects: '/api/spatial-projects'
+      spatialProjects: '/api/spatial-projects',
+      curriculum: '/api/curriculum',
+      transcription: '/api/transcription',
     }
   });
 });

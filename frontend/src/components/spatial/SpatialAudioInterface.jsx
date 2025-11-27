@@ -47,6 +47,30 @@ const SpatialAudioInterface = ({ project, onProjectUpdate, audioTracks = [] }) =
     }
   }, []);
 
+  useEffect(() => {
+    if (!project) return;
+
+    if (project.sources && Array.isArray(project.sources) && project.sources.length > 0) {
+      setSoundSources(
+        project.sources.map((source, index) => ({
+          id: source.id || `source_${index}`,
+          label: source.label || `Source ${index + 1}`,
+          position: source.position || [0, 0],
+          volume: typeof source.volume === 'number' ? source.volume : 0.8,
+          color:
+            source.color || `hsl(${(index * 90) % 360}, 70%, 60%)`,
+          isUploadedFile: source.isUploadedFile || false,
+          audioFile: null,
+          audioURL: source.audioURL || null,
+        }))
+      );
+    }
+
+    if (project.settings && typeof project.settings.masterVolume === 'number') {
+      setMasterVolume(project.settings.masterVolume);
+    }
+  }, [project]);
+
   // Initialize Web Audio API
   useEffect(() => {
     const initAudioContext = async () => {
@@ -668,39 +692,58 @@ const SpatialAudioInterface = ({ project, onProjectUpdate, audioTracks = [] }) =
           <button
             onClick={() => {
               try {
-                const projectData = {
-                  name: `Spatial Audio Project ${new Date().toLocaleString()}`,
-                  soundSources: soundSources.map(source => ({
+                const spatialSection = {
+                  room:
+                    project && project.room
+                      ? project.room
+                      : { width: 10, height: 3, depth: 10 },
+                  listener:
+                    project && project.listener
+                      ? project.listener
+                      : { x: 0, y: 0, z: 0 },
+                  sources: soundSources.map(source => ({
                     id: source.id,
                     label: source.label,
                     position: source.position,
                     volume: source.volume,
                     color: source.color,
                     isUploadedFile: source.isUploadedFile || false,
-                    // Don't include actual file data, just reference
-                    fileName: source.audioFile ? source.audioFile.name : null
+                    fileName: source.audioFile ? source.audioFile.name : null,
+                    audioURL: source.audioURL || null,
                   })),
                   settings: {
                     masterVolume,
                     totalSources: soundSources.length,
                     uploadedFiles: soundSources.filter(s => s.isUploadedFile).length,
-                    demoSources: soundSources.filter(s => !s.isUploadedFile).length
+                    demoSources: soundSources.filter(s => !s.isUploadedFile).length,
                   },
-                  createdAt: new Date().toISOString(),
-                  version: '1.0'
                 };
-                
-                const dataStr = JSON.stringify(projectData, null, 2);
-                const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
-                
-                const linkElement = document.createElement('a');
-                linkElement.setAttribute('href', dataUri);
-                linkElement.setAttribute('download', `spatial-project-${Date.now()}.json`);
-                document.body.appendChild(linkElement);
-                linkElement.click();
-                document.body.removeChild(linkElement);
-                
-                alert(`✅ Project saved successfully!\n\nFile: spatial-project-${Date.now()}.json\nSources: ${soundSources.length}\nUploaded Files: ${soundSources.filter(s => s.isUploadedFile).length}`);
+
+                if (onProjectUpdate) {
+                  onProjectUpdate(spatialSection);
+                  alert('✅ Spatial layout updated. Use "Save Project" above to store it.');
+                } else {
+                  const dataStr = JSON.stringify(spatialSection, null, 2);
+                  const dataUri =
+                    'data:application/json;charset=utf-8,' +
+                    encodeURIComponent(dataStr);
+
+                  const linkElement = document.createElement('a');
+                  linkElement.setAttribute('href', dataUri);
+                  linkElement.setAttribute(
+                    'download',
+                    `spatial-project-${Date.now()}.json`
+                  );
+                  document.body.appendChild(linkElement);
+                  linkElement.click();
+                  document.body.removeChild(linkElement);
+
+                  alert(
+                    `✅ Project saved successfully!\n\nFile: spatial-project-${Date.now()}.json\nSources: ${soundSources.length}\nUploaded Files: ${soundSources.filter(
+                      s => s.isUploadedFile
+                    ).length}`
+                  );
+                }
               } catch (error) {
                 console.error('Save error:', error);
                 alert('❌ Failed to save project. Please try again.');
