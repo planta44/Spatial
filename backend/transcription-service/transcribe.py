@@ -6,18 +6,13 @@ from basic_pitch import ICASSP_2022_MODEL_PATH
 def load_audio(audio_path):
     """Load audio using librosa (handles multiple formats)."""
     y, sr = librosa.load(audio_path, sr=22050, mono=True)
-    return sr, y
+    return sr, y, audio_path
 
-def autocorr_pitch(y, sr, fmin=80.0, fmax=600.0):
+def autocorr_pitch(audio_path, fmin=80.0, fmax=600.0):
     """Pitch detection using Spotify's basic-pitch (deep learning model)."""
-    # basic-pitch expects the audio path, so we'll save y temporarily if needed
-    # or we can use the predict function directly with the audio data
-    
-    # Run basic-pitch prediction
+    # Run basic-pitch prediction directly on the audio file
     model_output, midi_data, note_events = predict(
-        audio_path=None,
-        audio=y,
-        sample_rate=sr,
+        audio_path,
         onset_threshold=0.5,
         frame_threshold=0.3,
         minimum_note_length=127.70,  # in milliseconds
@@ -120,9 +115,9 @@ def quantize_duration(seconds, tempo=120):
 
 def audio_to_melody(audio_path, key='C major', tempo=120):
     """Load audio, detect pitch, and quantize to a simple melody with fallback."""
-    sr, y = load_audio(audio_path)
+    sr, y, file_path = load_audio(audio_path)
     print(f"[DEBUG] Loaded audio: sr={sr}, length={len(y)/sr:.2f}s, rms={np.sqrt(np.mean(y**2)):.4f}")
-    pitches, times = autocorr_pitch(y, sr)
+    pitches, times = autocorr_pitch(file_path)
     print(f"[DEBUG] Detected raw pitches: {len(pitches)}")
     if len(pitches) < 3:
         # Only fallback if almost nothing detected
