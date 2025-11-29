@@ -17,3 +17,17 @@ build/
 # Ignore OS junk
 .DS_Store
 Thumbs.db
+
+
+venv*/
+*.pyc
+__pycache__/
+backend/transcription-service/venv310/
+
+
+venv*/
+backend/transcription-service/venv*/
+__pycache__/
+*.dll
+*.so
+*.pyd
