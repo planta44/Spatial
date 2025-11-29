@@ -215,30 +215,38 @@ const StudentPractice = () => {
       setIsTranscribing(true);
       setTranscriptionError('');
 
+      // Estimate duration from blob size (rough heuristic) or default to 8 bars
+      const durationSeconds = recordedBlob.size
+        ? Math.max(2, Math.min(16, recordedBlob.size / 8000))
+        : 8;
+
       const formData = new FormData();
       formData.append('audio', recordedBlob, 'performance.webm');
       formData.append('key', 'C major');
       formData.append('tempo', '120');
-      formData.append('length', '8');
+      formData.append('length', Math.round(durationSeconds * 2).toString()); // approx 2 notes per second
       formData.append('style', 'classical');
 
       const response = await transcriptionAPI.transcribePerformance(formData);
       const data = response.data || {};
+
+      // Accept both `composition` or flat `melody` shape
       const compositionData = data.composition || {
         melody: data.melody,
         key: data.key || 'C major',
         tempo: data.tempo || 120,
       };
 
-      if (compositionData && compositionData.melody) {
+      if (compositionData && Array.isArray(compositionData.melody) && compositionData.melody.length > 0) {
         setComposition(compositionData);
         setActiveTab('compose');
       } else {
-        setTranscriptionError('No melody data returned from transcription service.');
+        setTranscriptionError('No clear melody could be extracted from the audio. Try recording a clearer, single‑line melody.');
       }
     } catch (error) {
       console.error('Error sending audio for transcription:', error);
-      setTranscriptionError('Failed to transcribe audio. Please try again.');
+      const msg = error?.response?.data?.message || error?.message || 'Unknown error';
+      setTranscriptionError(`Transcription failed: ${msg}`);
     } finally {
       setIsTranscribing(false);
     }
@@ -688,14 +696,11 @@ const StudentPractice = () => {
             <p className="text-xs text-gray-500">Analyzing your performance and building a melody…</p>
           )}
           {transcriptionError && (
-            <p className="text-xs text-red-600 mt-1">{transcriptionError}</p>
+            <div className="bg-red-50 p-2 rounded text-sm text-red-700">{transcriptionError}</div>
           )}
-        </div>
-        <div className="bg-white rounded-lg shadow-md p-4 lg:col-span-2 text-xs text-gray-700 space-y-1">
-          <p className="font-medium text-gray-900 mb-1">Tips for better results:</p>
-          <p>• Sing or play a clear single-line melody (no chords).</p>
-          <p>• Keep recordings short (4–8 bars) with steady tempo.</p>
-          <p>• Use a quiet room and place the microphone close to the sound source.</p>
+          <p className="text-xs text-gray-500 mt-2">
+            Note: This is a demo stub. It generates a simple melody in the requested key and tempo, not a real transcription of your audio.
+          </p>
         </div>
       </div>
     </div>

@@ -32,28 +32,31 @@ class AICompositionService {
     // Generate melody based on complexity
     const noteRange = complexity === 'beginner' ? 5 : complexity === 'intermediate' ? 7 : 12;
     
+    // Prefer stepwise motion; limit large jumps
+    let lastNoteIndex = 0;
     for (let i = 0; i < length; i++) {
-      // Simple random selection with some musical logic
       let noteIndex;
       if (i === 0 || i === length - 1) {
         // Start and end on tonic
         noteIndex = 0;
       } else {
-        // Prefer stepwise motion
-        const lastNoteIndex = melody[i - 1]?.noteIndex || 0;
-        const stepProbability = 0.6;
-        
+        // 70% stepwise, 30% small jump
+        const stepProbability = 0.7;
         if (Math.random() < stepProbability) {
           // Stepwise motion
-          noteIndex = Math.random() < 0.5 
-            ? Math.max(0, lastNoteIndex - 1)
-            : Math.min(scale.length - 1, lastNoteIndex + 1);
+          const direction = Math.random() < 0.5 ? -1 : 1;
+          noteIndex = Math.max(0, Math.min(scale.length - 1, lastNoteIndex + direction));
         } else {
-          // Random jump
-          noteIndex = Math.floor(Math.random() * Math.min(scale.length, noteRange));
+          // Small jump (2–3 steps)
+          const jump = Math.random() < 0.5 ? 2 : 3;
+          const direction = Math.random() < 0.5 ? -1 : 1;
+          noteIndex = Math.max(0, Math.min(scale.length - 1, lastNoteIndex + direction * jump));
         }
+        // Keep within range
+        noteIndex = Math.min(noteIndex, noteRange - 1);
       }
       
+      lastNoteIndex = noteIndex;
       melody.push({
         note: scale[noteIndex],
         noteIndex: noteIndex,

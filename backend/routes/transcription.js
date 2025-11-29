@@ -6,7 +6,7 @@ const router = express.Router();
 const { optionalAuth } = require('../middleware/auth');
 const { transcribePerformance } = require('../controllers/transcriptionController');
 
-const upload = multer({ dest: 'uploads/' });
+const upload = multer({ storage: multer.memoryStorage() });
 
 router.post('/performance', upload.single('audio'), optionalAuth, transcribePerformance);
 

@@ -30,6 +30,14 @@ services:
         fromDatabase:
           name: spatial-ai-db
           property: password
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRE
+        value: 30d
+      - key: FRONTEND_URL
+        sync: false
+      - key: TRANSCRIPTION_SERVICE_URL
+        sync: false
 
 databases:
   - name: spatial-ai-db
