@@ -1,37 +1,33 @@
 import librosa
 import numpy as np
-from basic_pitch.inference import predict
-from basic_pitch import ICASSP_2022_MODEL_PATH
 
 def load_audio(audio_path):
     """Load audio using librosa (handles multiple formats)."""
     y, sr = librosa.load(audio_path, sr=22050, mono=True)
-    return sr, y, audio_path
+    return sr, y
 
-def autocorr_pitch(audio_path, fmin=80.0, fmax=600.0):
-    """Pitch detection using Spotify's basic-pitch (deep learning model)."""
-    # Run basic-pitch prediction directly on the audio file
-    model_output, midi_data, note_events = predict(
-        audio_path,
-        onset_threshold=0.5,
-        frame_threshold=0.3,
-        minimum_note_length=127.70,  # in milliseconds
-        minimum_frequency=fmin,
-        maximum_frequency=fmax,
-        multiple_pitch_bends=False,
-        melodia_trick=True,
-        debug_file=None,
+def autocorr_pitch(y, sr, fmin=80.0, fmax=600.0):
+    """Pitch detection using librosa's pYIN (best free option for monophonic vocals)."""
+    # Use pYIN for monophonic pitch tracking
+    f0, voiced_flag, voiced_probs = librosa.pyin(
+        y,
+        sr=sr,
+        fmin=fmin,
+        fmax=fmax,
+        frame_length=2048
     )
     
-    # Extract pitches and times from note_events
+    # Get times for each frame
+    times = librosa.frames_to_time(np.arange(len(f0)), sr=sr)
+    
+    # Filter out unvoiced frames and NaN values
     detected_pitches = []
     detected_times = []
     
-    for start_time, end_time, pitch_midi, amplitude, pitch_bends in note_events:
-        # Convert MIDI to frequency
-        freq = 440.0 * (2.0 ** ((pitch_midi - 69) / 12.0))
-        detected_pitches.append(freq)
-        detected_times.append(start_time)
+    for i, (freq, is_voiced) in enumerate(zip(f0, voiced_flag)):
+        if is_voiced and not np.isnan(freq):
+            detected_pitches.append(freq)
+            detected_times.append(times[i])
     
     return np.array(detected_pitches), np.array(detected_times)
 
@@ -115,9 +111,9 @@ def quantize_duration(seconds, tempo=120):
 
 def audio_to_melody(audio_path, key='C major', tempo=120):
     """Load audio, detect pitch, and quantize to a simple melody with fallback."""
-    sr, y, file_path = load_audio(audio_path)
+    sr, y = load_audio(audio_path)
     print(f"[DEBUG] Loaded audio: sr={sr}, length={len(y)/sr:.2f}s, rms={np.sqrt(np.mean(y**2)):.4f}")
-    pitches, times = autocorr_pitch(file_path)
+    pitches, times = autocorr_pitch(y, sr)
     print(f"[DEBUG] Detected raw pitches: {len(pitches)}")
     if len(pitches) < 3:
         # Only fallback if almost nothing detected
