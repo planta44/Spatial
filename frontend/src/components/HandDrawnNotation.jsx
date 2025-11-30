@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Play, Save, Undo, Trash2, Music, Pencil, Plus } from 'lucide-react';
+import { Play, Pause, Save, Undo, Trash2, Music, Pencil, Plus, X } from 'lucide-react';
 
 const HandDrawnNotation = ({ onSave }) => {
   const canvasRef = useRef(null);
@@ -11,6 +11,7 @@ const HandDrawnNotation = ({ onSave }) => {
   const [staves, setStaves] = useState([0]); // Track multiple staff lines
   const audioContextRef = useRef(null);
   const canvasHeightRef = useRef(300);
+  const playingNodesRef = useRef([]); // Store playing audio nodes for pause/stop
 
   // Initialize audio context
   useEffect(() => {
@@ -49,9 +50,9 @@ const HandDrawnNotation = ({ onSave }) => {
     ];
   };
 
-  // Advanced shape recognition for music notation
+  // Advanced shape recognition with better tolerance for human drawing
   const recognizeShape = (points) => {
-    if (points.length < 5) return { type: 'unknown' };
+    if (points.length < 3) return { type: 'unknown' };
 
     const bounds = {
       minX: Math.min(...points.map(p => p.x)),
@@ -64,10 +65,11 @@ const HandDrawnNotation = ({ onSave }) => {
     const height = bounds.maxY - bounds.minY;
     const centerX = (bounds.minX + bounds.maxX) / 2;
     const centerY = (bounds.minY + bounds.maxY) / 2;
+    const aspectRatio = height / Math.max(width, 1);
 
-    // Check for vertical line (stem)
-    const isVertical = height > width * 3 && height > 30;
-    if (isVertical) {
+    // 1. Check for vertical stem (straight line)
+    const isVerticalStem = aspectRatio > 2.5 && height > 25 && width < 15;
+    if (isVerticalStem) {
       return {
         type: 'stem',
         center: { x: centerX, y: centerY },
@@ -76,7 +78,13 @@ const HandDrawnNotation = ({ onSave }) => {
       };
     }
 
-    // Check for circle/ellipse (note head)
+    // 2. Check for horizontal line (leger line or beam)
+    const isHorizontalLine = width > height * 2.5 && width > 25 && height < 15;
+    if (isHorizontalLine) {
+      return { type: 'leger_line', center: { x: centerX, y: centerY } };
+    }
+
+    // 3. Calculate circularity with generous tolerance for human error
     const avgRadius = points.reduce((sum, p) => {
       const dist = Math.sqrt(Math.pow(p.x - centerX, 2) + Math.pow(p.y - centerY, 2));
       return sum + dist;
@@ -88,17 +96,62 @@ const HandDrawnNotation = ({ onSave }) => {
     });
 
     const avgDeviation = deviations.reduce((sum, d) => sum + d, 0) / deviations.length;
-    const isCircular = avgDeviation < avgRadius * 0.5 && avgRadius > 3 && avgRadius < 30;
+    const circularityScore = 1 - (avgDeviation / avgRadius);
+    
+    // More forgiving circularity threshold (50% instead of 60%)
+    const isReasonablyCircular = circularityScore > 0.5 && avgRadius > 5 && avgRadius < 40;
 
-    if (isCircular) {
-      // Check if filled (quarter/eighth) or hollow (half/whole)
-      const isFilled = width < 20 && height < 20; // Smaller = likely filled
-      const isHollow = width > 15 || height > 15;  // Larger = likely hollow
-      
+    // 4. Detect note type based on multiple factors
+    if (isReasonablyCircular || (aspectRatio < 2 && aspectRatio > 0.5 && width < 40 && height < 40)) {
+      // Calculate "density" - how much ink was used
+      const perimeter = points.length;
+      const area = width * height;
+      const density = perimeter / Math.max(area, 1);
+
+      // Check if it's closed (start and end points are close)
+      const startPoint = points[0];
+      const endPoint = points[points.length - 1];
+      const distStartEnd = Math.sqrt(
+        Math.pow(endPoint.x - startPoint.x, 2) + Math.pow(endPoint.y - startPoint.y, 2)
+      );
+      const isClosed = distStartEnd < avgRadius * 0.6;
+
+      // Determine note duration
+      let noteType;
+      if (width > 20 || height > 20) {
+        // Larger shapes = half/whole notes (hollow)
+        noteType = 'hollow_note';
+      } else if (density > 0.8 || !isClosed) {
+        // High density or not closed = filled note
+        noteType = 'filled_note';
+      } else {
+        // Default to filled quarter note
+        noteType = 'filled_note';
+      }
+
       return {
-        type: isFilled ? 'filled_note' : (isHollow ? 'hollow_note' : 'filled_note'),
+        type: noteType,
         center: { x: centerX, y: centerY },
         radius: avgRadius,
+        confidence: circularityScore,
+      };
+    }
+
+    // 5. Check for dot (very small circle)
+    if (width < 12 && height < 12 && width > 3 && height > 3) {
+      return {
+        type: 'dot',
+        center: { x: centerX, y: centerY },
+      };
+    }
+
+    // 6. Try to salvage as a note even if not perfectly circular
+    if (width < 50 && height < 50 && width > 5 && height > 5) {
+      return {
+        type: 'filled_note',
+        center: { x: centerX, y: centerY },
+        radius: (width + height) / 4,
+        confidence: 0.3, // Low confidence
       };
     }
 
@@ -265,14 +318,14 @@ const HandDrawnNotation = ({ onSave }) => {
   };
 
   const stopDrawing = () => {
-    if (!isDrawing || currentStroke.length < 3) {
+    if (!isDrawing || currentStroke.length < 2) {
       setIsDrawing(false);
       setCurrentStroke([]);
       return;
     }
     setIsDrawing(false);
 
-    // Recognize the shape
+    // Recognize the shape with improved tolerance
     const shape = recognizeShape(currentStroke);
     
     if (shape.type === 'filled_note' || shape.type === 'hollow_note') {
@@ -310,17 +363,30 @@ const HandDrawnNotation = ({ onSave }) => {
     } else if (shape.type === 'stem') {
       // Try to attach stem to nearest note
       const nearbyNote = notes.find(n => 
-        Math.abs(n.x - shape.center.x) < 20 && 
-        Math.abs(n.y - shape.center.y) < 40
+        Math.abs(n.x - shape.center.x) < 25 && 
+        Math.abs(n.y - shape.center.y) < 50
       );
       
-      if (nearbyNote && nearbyNote.duration >= 1.0) {
-        // Reduce duration (stem makes it a quarter note)
-        nearbyNote.duration = 1.0;
-        setNotes([...notes]);
+      if (nearbyNote) {
+        // Keep recognized but don't modify note (visual only)
+        setAllStrokes([...allStrokes, { points: currentStroke, recognized: true }]);
+      } else {
+        setAllStrokes([...allStrokes, { points: currentStroke, recognized: false }]);
       }
+    } else if (shape.type === 'dot') {
+      // Dotted note - find nearest note and increase duration by 50%
+      const nearbyNote = notes.find(n => 
+        Math.abs(n.x - shape.center.x) < 30 && 
+        Math.abs(n.y - shape.center.y) < 20
+      );
       
-      setAllStrokes([...allStrokes, { points: currentStroke, recognized: true }]);
+      if (nearbyNote) {
+        nearbyNote.duration = nearbyNote.duration * 1.5;
+        setNotes([...notes]);
+        setAllStrokes([...allStrokes, { points: currentStroke, recognized: true }]);
+      } else {
+        setAllStrokes([...allStrokes, { points: currentStroke, recognized: false }]);
+      }
     } else {
       // Unrecognized shape, keep the stroke visible
       setAllStrokes([...allStrokes, { points: currentStroke, recognized: false }]);
@@ -341,13 +407,27 @@ const HandDrawnNotation = ({ onSave }) => {
     setCurrentStroke([]);
   };
 
+  // Play or pause notes
+  const togglePlayPause = () => {
+    if (isPlaying) {
+      // Pause/stop all playing notes
+      pauseNotes();
+    } else {
+      // Start playing
+      playNotes();
+    }
+  };
+
   // Play notes using Web Audio API
   const playNotes = async () => {
-    if (notes.length === 0 || isPlaying) return;
+    if (notes.length === 0) return;
 
     setIsPlaying(true);
     const ctx = audioContextRef.current;
     const now = ctx.currentTime;
+
+    // Clear any existing nodes
+    playingNodesRef.current = [];
 
     notes.forEach((note, index) => {
       const frequency = 440 * Math.pow(2, (noteToMidi(note) - 69) / 12);
@@ -370,9 +450,30 @@ const HandDrawnNotation = ({ onSave }) => {
 
       oscillator.start(startTime);
       oscillator.stop(startTime + 0.5);
+
+      // Store nodes for potential stopping
+      playingNodesRef.current.push({ oscillator, gainNode });
     });
 
-    setTimeout(() => setIsPlaying(false), notes.length * 500 + 500);
+    setTimeout(() => {
+      setIsPlaying(false);
+      playingNodesRef.current = [];
+    }, notes.length * 500 + 500);
+  };
+
+  // Pause/stop all playing notes
+  const pauseNotes = () => {
+    playingNodesRef.current.forEach(({ oscillator, gainNode }) => {
+      try {
+        gainNode.gain.cancelScheduledValues(audioContextRef.current.currentTime);
+        gainNode.gain.setValueAtTime(0, audioContextRef.current.currentTime);
+        oscillator.stop();
+      } catch (e) {
+        // Already stopped
+      }
+    });
+    playingNodesRef.current = [];
+    setIsPlaying(false);
   };
 
   // Convert note to MIDI number
@@ -445,30 +546,48 @@ const HandDrawnNotation = ({ onSave }) => {
         />
       </div>
       
-      {/* Add Staff Button */}
-      {staves.length < 5 && (
-        <button
-          onClick={() => setStaves([...staves, staves.length])}
-          className="flex items-center gap-2 px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition-colors text-sm font-medium"
-        >
-          <Plus size={16} />
-          Add New Staff ({staves.length}/5)
-        </button>
-      )}
+      {/* Staff Management */}
+      <div className="flex flex-wrap gap-2">
+        {staves.length < 5 && (
+          <button
+            onClick={() => setStaves([...staves, staves.length])}
+            className="flex items-center gap-2 px-3 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition-colors text-sm font-medium"
+          >
+            <Plus size={16} />
+            Add Staff ({staves.length}/5)
+          </button>
+        )}
+        {staves.length > 1 && (
+          <button
+            onClick={() => {
+              const newStaves = staves.slice(0, -1);
+              const newNotes = notes.filter(n => n.staffIndex < newStaves.length);
+              setStaves(newStaves);
+              setNotes(newNotes);
+            }}
+            className="flex items-center gap-2 px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors text-sm font-medium"
+          >
+            <X size={16} />
+            Delete Last Staff
+          </button>
+        )}
+      </div>
 
       {/* Controls */}
       <div className="flex flex-wrap gap-2">
         <button
-          onClick={playNotes}
-          disabled={notes.length === 0 || isPlaying}
+          onClick={togglePlayPause}
+          disabled={notes.length === 0}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
-            notes.length === 0 || isPlaying
+            notes.length === 0
               ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+              : isPlaying
+              ? 'bg-orange-600 text-white hover:bg-orange-700'
               : 'bg-green-600 text-white hover:bg-green-700'
           }`}
         >
-          <Play size={16} />
-          {isPlaying ? 'Playing...' : 'Play Notes'}
+          {isPlaying ? <Pause size={16} /> : <Play size={16} />}
+          {isPlaying ? 'Pause' : 'Play All Notes'}
         </button>
 
         <button

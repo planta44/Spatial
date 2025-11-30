@@ -488,18 +488,6 @@ const StudentPractice = () => {
         isPlaying={isPlaying}
       />
 
-      {/* Hand-Drawn Notation */}
-      <div className="bg-white border border-gray-200 rounded-lg p-6">
-        <h4 className="text-lg font-semibold mb-4">✏️ Draw Your Notes</h4>
-        <p className="text-sm text-gray-600 mb-4">
-          Click on the staff to draw notes directly. Great for students and quick composition!
-        </p>
-        <HandDrawnNotation onSave={(comp) => {
-          setComposition(comp);
-          alert('✅ Notes saved to composer!');
-        }} />
-      </div>
-
       {/* AI Assistant Panel */}
       <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-6">
         <h4 className="text-lg font-semibold mb-4">🤖 AI Composition Assistant</h4>
@@ -571,6 +559,18 @@ const StudentPractice = () => {
             <p className="text-sm text-gray-600">Get feedback on your composition</p>
           </button>
         </div>
+      </div>
+
+      {/* Hand-Drawn Notation */}
+      <div className="bg-white border border-gray-200 rounded-lg p-6">
+        <h4 className="text-lg font-semibold mb-4">✏️ Draw Your Notes</h4>
+        <p className="text-sm text-gray-600 mb-4">
+          Click on the staff to draw notes directly. Great for students and quick composition!
+        </p>
+        <HandDrawnNotation onSave={(comp) => {
+          setComposition(comp);
+          alert('✅ Notes saved to composer!');
+        }} />
       </div>
     </div>
   );
