@@ -1,11 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Play, Save, Undo, Trash2, Music } from 'lucide-react';
-import Vex from 'vexflow';
+import { Play, Save, Undo, Trash2, Music, Pencil } from 'lucide-react';
 
 const HandDrawnNotation = ({ onSave }) => {
   const canvasRef = useRef(null);
   const [notes, setNotes] = useState([]);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [currentStroke, setCurrentStroke] = useState([]);
+  const [strokes, setStrokes] = useState([]);
   const audioContextRef = useRef(null);
 
   // Initialize audio context
@@ -29,6 +31,32 @@ const HandDrawnNotation = ({ onSave }) => {
     { name: 'D', octave: 4, y: 140 },
     { name: 'C', octave: 4, y: 155 },
   ];
+
+  // Recognize if drawn shape is a circle (note head)
+  const isCircleShape = (points) => {
+    if (points.length < 10) return false;
+
+    // Calculate center
+    const centerX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
+    const centerY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
+
+    // Calculate average radius
+    const avgRadius = points.reduce((sum, p) => {
+      const dist = Math.sqrt(Math.pow(p.x - centerX, 2) + Math.pow(p.y - centerY, 2));
+      return sum + dist;
+    }, 0) / points.length;
+
+    // Check if points are roughly equidistant from center (circle-like)
+    const deviations = points.map(p => {
+      const dist = Math.sqrt(Math.pow(p.x - centerX, 2) + Math.pow(p.y - centerY, 2));
+      return Math.abs(dist - avgRadius);
+    });
+
+    const avgDeviation = deviations.reduce((sum, d) => sum + d, 0) / deviations.length;
+    const isCircle = avgDeviation < avgRadius * 0.4; // 40% tolerance
+
+    return { isCircle, center: { x: centerX, y: centerY }, radius: avgRadius };
+  };
 
   // Draw staff and notes on canvas
   useEffect(() => {
@@ -54,7 +82,41 @@ const HandDrawnNotation = ({ onSave }) => {
     ctx.fillStyle = '#333';
     ctx.fillText('𝄞', 25, 135);
 
-    // Draw notes
+    // Draw existing strokes (user drawing)
+    strokes.forEach(stroke => {
+      ctx.strokeStyle = '#9ca3af';
+      ctx.lineWidth = 2;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      stroke.forEach((point, i) => {
+        if (i === 0) {
+          ctx.moveTo(point.x, point.y);
+        } else {
+          ctx.lineTo(point.x, point.y);
+        }
+      });
+      ctx.stroke();
+    });
+
+    // Draw current stroke (while drawing)
+    if (currentStroke.length > 0) {
+      ctx.strokeStyle = '#3b82f6';
+      ctx.lineWidth = 2;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      currentStroke.forEach((point, i) => {
+        if (i === 0) {
+          ctx.moveTo(point.x, point.y);
+        } else {
+          ctx.lineTo(point.x, point.y);
+        }
+      });
+      ctx.stroke();
+    }
+
+    // Draw recognized notes
     notes.forEach((note, index) => {
       const x = 80 + index * 60;
       const y = note.y;
@@ -78,20 +140,54 @@ const HandDrawnNotation = ({ onSave }) => {
       ctx.fillStyle = '#666';
       ctx.fillText(`${note.name}${note.octave}`, x - 10, y + 25);
     });
-  }, [notes]);
+  }, [notes, currentStroke, strokes]);
 
-  // Handle canvas click to add notes
-  const handleCanvasClick = (e) => {
+  // Mouse/touch event handlers for drawing
+  const startDrawing = (e) => {
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
+    
+    setIsDrawing(true);
+    setCurrentStroke([{ x, y }]);
+  };
 
-    // Find closest note position
-    const closestNote = notePositions.reduce((prev, curr) =>
-      Math.abs(curr.y - y) < Math.abs(prev.y - y) ? curr : prev
-    );
+  const draw = (e) => {
+    if (!isDrawing) return;
+    
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    setCurrentStroke(prev => [...prev, { x, y }]);
+  };
 
-    setNotes([...notes, { ...closestNote, duration: 1.0 }]);
+  const stopDrawing = () => {
+    if (!isDrawing) return;
+    setIsDrawing(false);
+
+    // Recognize the shape
+    const shapeAnalysis = isCircleShape(currentStroke);
+    
+    if (shapeAnalysis.isCircle) {
+      // It's a note! Find the closest staff position
+      const closestNote = notePositions.reduce((prev, curr) =>
+        Math.abs(curr.y - shapeAnalysis.center.y) < Math.abs(prev.y - shapeAnalysis.center.y)
+          ? curr
+          : prev
+      );
+      
+      setNotes([...notes, { ...closestNote, duration: 1.0 }]);
+      // Clear strokes after recognizing
+      setStrokes([]);
+    } else {
+      // Not recognized, keep the stroke
+      setStrokes([...strokes, currentStroke]);
+    }
+    
+    setCurrentStroke([]);
   };
 
   // Undo last note
@@ -102,6 +198,8 @@ const HandDrawnNotation = ({ onSave }) => {
   // Clear all notes
   const handleClear = () => {
     setNotes([]);
+    setStrokes([]);
+    setCurrentStroke([]);
   };
 
   // Play notes using Web Audio API
@@ -167,15 +265,16 @@ const HandDrawnNotation = ({ onSave }) => {
       {/* Instructions */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
         <div className="flex items-start gap-2">
-          <Music className="text-blue-600 flex-shrink-0 mt-0.5" size={18} />
+          <Pencil className="text-blue-600 flex-shrink-0 mt-0.5" size={18} />
           <div className="text-sm text-blue-800">
-            <p className="font-medium mb-1">How to Draw Notes:</p>
+            <p className="font-medium mb-1">🎨 Draw Musical Notes:</p>
             <ul className="list-disc list-inside space-y-1 text-xs">
-              <li>Click on the staff to place notes (higher = higher pitch)</li>
-              <li>Notes will snap to the nearest line/space</li>
+              <li>Draw circles on the staff with your mouse to create notes</li>
+              <li>The system will recognize your circles and snap them to the nearest pitch</li>
+              <li>Higher position = higher pitch</li>
               <li>Use Undo to remove the last note</li>
               <li>Click Play to hear your melody</li>
-              <li>Save to load into the editor</li>
+              <li>Save to load into the composer</li>
             </ul>
           </div>
         </div>
@@ -187,7 +286,10 @@ const HandDrawnNotation = ({ onSave }) => {
           ref={canvasRef}
           width={800}
           height={220}
-          onClick={handleCanvasClick}
+          onMouseDown={startDrawing}
+          onMouseMove={draw}
+          onMouseUp={stopDrawing}
+          onMouseLeave={stopDrawing}
           className="cursor-crosshair w-full"
           style={{ maxWidth: '100%', height: 'auto' }}
         />

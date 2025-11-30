@@ -16,6 +16,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/")
+async def root():
+    """Root endpoint for health checks"""
+    return {
+        "status": "online",
+        "service": "Spatial AI Transcription Service",
+        "version": "1.0.0",
+        "endpoints": {
+            "transcribe": "/transcribe (POST)"
+        }
+    }
+
+@app.get("/health")
+async def health():
+    """Health check endpoint"""
+    return {"status": "healthy", "service": "transcription"}
+
 @app.post("/transcribe")
 async def transcribe(
     audio: UploadFile = File(...),
