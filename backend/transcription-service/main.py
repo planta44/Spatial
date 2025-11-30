@@ -1,10 +1,20 @@
 from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 import tempfile
 import os
 from transcribe import audio_to_melody
 
 app = FastAPI(title="Transcription Service", version="1.0.0")
+
+# Enable CORS to allow requests from backend service
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins (Render services can call this)
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.post("/transcribe")
 async def transcribe(
