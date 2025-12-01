@@ -1,163 +1,188 @@
-import librosa
-import numpy as np
+import requests
+import os
+from typing import List, Dict
 
-def load_audio(audio_path):
-    """Load audio using librosa (handles multiple formats)."""
-    y, sr = librosa.load(audio_path, sr=22050, mono=True)
-    return sr, y
+# Klang.io API Configuration
+KLANG_API_KEY = os.getenv("KLANG_API_KEY", "0xkl-7c3da76296b2358e89c6077234506b3d")
+KLANG_API_URL = "https://api.klang.io/v1/transcribe"
 
-def autocorr_pitch(y, sr, fmin=80.0, fmax=600.0):
-    """Pitch detection using librosa's pYIN (best free option for monophonic vocals)."""
-    # Use pYIN for monophonic pitch tracking
-    f0, voiced_flag, voiced_probs = librosa.pyin(
-        y,
-        sr=sr,
-        fmin=fmin,
-        fmax=fmax,
-        frame_length=2048
-    )
+def transcribe_with_klang(audio_path: str) -> List[Dict]:
+    """
+    Transcribe audio using Klang.io's API for professional music transcription.
     
-    # Get times for each frame
-    times = librosa.frames_to_time(np.arange(len(f0)), sr=sr)
+    Args:
+        audio_path: Path to the audio file
+        
+    Returns:
+        List of note dictionaries with format: {'note': 'C', 'octave': 4, 'duration': 1.0}
+    """
+    print(f"[KLANG] Starting transcription for: {audio_path}")
     
-    # Filter out unvoiced frames and NaN values
-    detected_pitches = []
-    detected_times = []
+    try:
+        # Prepare the file for upload
+        with open(audio_path, 'rb') as audio_file:
+            files = {
+                'audio': (os.path.basename(audio_path), audio_file, 'audio/webm')
+            }
+            
+            headers = {
+                'Authorization': f'Bearer {KLANG_API_KEY}',
+                'Accept': 'application/json'
+            }
+            
+            # Optional parameters for better transcription
+            data = {
+                'format': 'musicxml',  # Request musical notation format
+                'instrument': 'voice',  # Optimize for vocal input
+                'tempo_detection': 'true',
+                'key_detection': 'true'
+            }
+            
+            print(f"[KLANG] Sending request to Klang.io API...")
+            response = requests.post(
+                KLANG_API_URL,
+                files=files,
+                headers=headers,
+                data=data,
+                timeout=60
+            )
+            
+            print(f"[KLANG] Response status: {response.status_code}")
+            
+            if response.status_code == 200:
+                result = response.json()
+                print(f"[KLANG] Transcription successful!")
+                return parse_klang_response(result)
+            else:
+                print(f"[KLANG] Error: {response.status_code} - {response.text}")
+                return fallback_scale()
+                
+    except requests.exceptions.RequestException as e:
+        print(f"[KLANG] Network error: {e}")
+        return fallback_scale()
+    except Exception as e:
+        print(f"[KLANG] Unexpected error: {e}")
+        return fallback_scale()
+
+def parse_klang_response(klang_result: Dict) -> List[Dict]:
+    """
+    Parse Klang.io API response and convert to our note format.
     
-    for i, (freq, is_voiced) in enumerate(zip(f0, voiced_flag)):
-        if is_voiced and not np.isnan(freq):
-            detected_pitches.append(freq)
-            detected_times.append(times[i])
+    Expected Klang response format:
+    {
+        'notes': [
+            {'pitch': 'C4', 'duration': 1.0, 'onset': 0.0},
+            {'pitch': 'D4', 'duration': 0.5, 'onset': 1.0},
+            ...
+        ],
+        'tempo': 120,
+        'key': 'C major'
+    }
+    """
+    print(f"[KLANG] Parsing response: {klang_result}")
     
-    return np.array(detected_pitches), np.array(detected_times)
+    notes = []
+    klang_notes = klang_result.get('notes', [])
+    
+    if not klang_notes:
+        print("[KLANG] No notes found in response, using fallback")
+        return fallback_scale()
+    
+    for klang_note in klang_notes:
+        try:
+            # Parse pitch (e.g., "C4" -> note="C", octave=4)
+            pitch = klang_note.get('pitch', 'C4')
+            note_name, octave = parse_pitch(pitch)
+            
+            # Get duration (in beats, typically quarter note = 1.0)
+            duration = float(klang_note.get('duration', 1.0))
+            
+            # Quantize duration to standard values
+            duration = quantize_duration_simple(duration)
+            
+            notes.append({
+                'note': note_name,
+                'octave': octave,
+                'duration': duration
+            })
+        except Exception as e:
+            print(f"[KLANG] Error parsing note: {e}")
+            continue
+    
+    # Limit to reasonable number of notes
+    if len(notes) > 24:
+        notes = notes[:24]
+    
+    print(f"[KLANG] Parsed {len(notes)} notes")
+    return notes if notes else fallback_scale()
 
-def merge_and_limit_notes(notes, max_notes=16, min_duration=0.125, max_duration=2.0):
-    """Merge consecutive identical notes, enforce min/max duration, and limit total count."""
-    if not notes:
-        return []
-    merged = []
-    prev = notes[0]
-    for n in notes[1:]:
-        if n['note'] == prev['note'] and n['octave'] == prev['octave']:
-            # Merge: add durations, but cap at max
-            prev['duration'] = min(prev['duration'] + n['duration'], max_duration)
-        else:
-            # Enforce minimum duration and cap maximum
-            prev['duration'] = max(min_duration, min(prev['duration'], max_duration))
-            merged.append(prev)
-            prev = n
-    # Enforce min/max duration on last note
-    prev['duration'] = max(min_duration, min(prev['duration'], max_duration))
-    merged.append(prev)
-
-    # If still too many notes, simplify by merging shortest adjacent notes
-    while len(merged) > max_notes:
-        # Find the pair with the smallest combined duration
-        min_idx = min(range(len(merged) - 1), key=lambda i: merged[i]['duration'] + merged[i+1]['duration'])
-        # Merge them (but still cap)
-        merged[min_idx]['duration'] = min(
-            merged[min_idx]['duration'] + merged[min_idx + 1]['duration'],
-            max_duration
-        )
-        merged.pop(min_idx + 1)
-
-    return merged
-
-def freq_to_midi(freq):
-    """Convert frequency to nearest MIDI note number."""
-    A4 = 440.0
-    MIDI_A4 = 69
-    if freq <= 0:
-        return None
-    midi_note = 12 * np.log2(freq / A4) + MIDI_A4
-    return int(round(midi_note))
-
-def midi_to_note(midi_note):
-    """MIDI number to note name."""
-    notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
-    octave = (midi_note // 12) - 1
-    note_name = notes[midi_note % 12]
+def parse_pitch(pitch_str: str) -> tuple:
+    """
+    Parse pitch string like 'C4', 'F#5', 'Bb3' into (note_name, octave).
+    
+    Args:
+        pitch_str: Pitch string (e.g., "C4", "F#5")
+        
+    Returns:
+        Tuple of (note_name, octave)
+    """
+    # Handle formats: C4, C#4, Cb4, etc.
+    if len(pitch_str) < 2:
+        return 'C', 4
+    
+    # Extract note name (with potential accidental)
+    if len(pitch_str) == 2:  # e.g., "C4"
+        note_name = pitch_str[0]
+        octave = int(pitch_str[1])
+    elif len(pitch_str) == 3:  # e.g., "C#4" or "Bb4"
+        note_name = pitch_str[:2]
+        octave = int(pitch_str[2])
+    else:
+        note_name = 'C'
+        octave = 4
+    
     return note_name, octave
 
-def quantize_to_key(note_name, key='C major'):
-    """Map any note to nearest scale tone (naive diatonic mapping)."""
-    major_scales = {
-        'C major': ['C', 'D', 'E', 'F', 'G', 'A', 'B'],
-        'G major': ['G', 'A', 'B', 'C', 'D', 'E', 'F#'],
-        'D major': ['D', 'E', 'F#', 'G', 'A', 'B', 'C#'],
-        'A major': ['A', 'B', 'C#', 'D', 'E', 'F#', 'G#'],
-        'E major': ['E', 'F#', 'G#', 'A', 'B', 'C#', 'D#'],
-        'F major': ['F', 'G', 'A', 'Bb', 'C', 'D', 'E'],
-        'Bb major': ['Bb', 'C', 'D', 'Eb', 'F', 'G', 'A'],
-        'Eb major': ['Eb', 'F', 'G', 'Ab', 'Bb', 'C', 'D'],
-        'Ab major': ['Ab', 'Bb', 'C', 'Db', 'Eb', 'F', 'G'],
-    }
-    scale = major_scales.get(key, major_scales['C major'])
-    if note_name in scale:
-        return note_name
-    # Simple fallback: return tonic
-    return scale[0]
-
-def quantize_duration(seconds, tempo=120):
-    """Quantize duration to nearest rhythmic value (quarter = 1)."""
-    beat = 60.0 / tempo
-    beats = seconds / beat
-    # For short recordings, cap durations to 2 beats (half note)
-    beats = min(beats, 2.0)
-    # Round to nearest common division, favor shorter notes
-    divisions = np.array([2.0, 1.0, 0.5, 0.25, 0.125, 0.0625])
-    idx = np.argmin(np.abs(divisions - beats))
-    return float(divisions[idx])
+def quantize_duration_simple(duration: float) -> float:
+    """
+    Quantize duration to nearest standard rhythmic value.
+    
+    Args:
+        duration: Duration in beats
+        
+    Returns:
+        Quantized duration (whole=4.0, half=2.0, quarter=1.0, eighth=0.5, sixteenth=0.25)
+    """
+    standard_durations = [4.0, 2.0, 1.0, 0.5, 0.25, 0.125]
+    
+    # Find nearest standard duration
+    closest = min(standard_durations, key=lambda x: abs(x - duration))
+    return closest
 
 def audio_to_melody(audio_path, key='C major', tempo=120):
-    """Load audio, detect pitch, and quantize to a simple melody with fallback."""
-    sr, y = load_audio(audio_path)
-    print(f"[DEBUG] Loaded audio: sr={sr}, length={len(y)/sr:.2f}s, rms={np.sqrt(np.mean(y**2)):.4f}")
-    pitches, times = autocorr_pitch(y, sr)
-    print(f"[DEBUG] Detected raw pitches: {len(pitches)}")
-    if len(pitches) < 3:
-        # Only fallback if almost nothing detected
-        print("[DEBUG] Using fallback scale (too few pitches)")
-        return fallback_scale(key, tempo)
-
-    # Convert to MIDI notes
-    midi_notes = [freq_to_midi(f) for f in pitches if f > 0]
-    note_names_octaves = [midi_to_note(m) for m in midi_notes if m is not None]
-    print(f"[DEBUG] MIDI notes: {midi_notes[:10]}...")  # first 10
-
-    # Group into notes (simple segmentation)
-    notes = []
-    if not note_names_octaves:
-        print("[DEBUG] No note names, using fallback")
-        return fallback_scale(key, tempo)
-
-    prev_note = None
-    note_start_time = None
-
-    for i, ((note_name, octave), t) in enumerate(zip(note_names_octaves, times)):
-        # Skip key quantization to see actual detected notes
-        current = {'note': note_name, 'octave': octave}
-        if prev_note is None or current != prev_note:
-            # Close previous note
-            if prev_note is not None and note_start_time is not None:
-                duration = t - note_start_time
-                duration = quantize_duration(duration, tempo)
-                notes.append({**prev_note, 'duration': duration})
-            # Start new note
-            note_start_time = t
-            prev_note = current
-        # else: same note continues
-
-    # Close trailing note
-    if prev_note is not None and note_start_time is not None:
-        duration = times[-1] - note_start_time
-        duration = quantize_duration(duration, tempo)
-        notes.append({**prev_note, 'duration': duration})
-
-    # Post-process: merge and limit (allow more notes)
-    notes = merge_and_limit_notes(notes, max_notes=24)
-
-    print(f"[DEBUG] Final notes: {notes}")
+    """
+    Main function to transcribe audio to melody using Klang.io API.
+    This replaces the previous librosa-based implementation.
+    
+    Args:
+        audio_path: Path to audio file
+        key: Musical key (informational, Klang detects automatically)
+        tempo: Tempo in BPM (informational, Klang detects automatically)
+        
+    Returns:
+        List of note dictionaries
+    """
+    print(f"[KLANG] audio_to_melody called with: {audio_path}")
+    print(f"[KLANG] Key: {key}, Tempo: {tempo}")
+    
+    # Use Klang.io API for transcription
+    notes = transcribe_with_klang(audio_path)
+    
+    if not notes:
+        print("[KLANG] Transcription failed, using fallback scale")
+        return fallback_scale(key)
+    
+    print(f"[KLANG] Transcription complete: {len(notes)} notes")
     return notes
 
 def fallback_scale(key='C major', tempo=120):

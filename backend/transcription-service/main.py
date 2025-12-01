@@ -21,10 +21,12 @@ async def root():
     """Root endpoint for health checks"""
     return {
         "status": "online",
-        "service": "Spatial AI Transcription Service",
-        "version": "1.0.0",
+        "service": "Spatial AI Transcription Service (Powered by Klang.io)",
+        "version": "2.0.0",
+        "provider": "Klang.io API",
         "endpoints": {
-            "transcribe": "/transcribe (POST)"
+            "transcribe": "/transcribe (POST)",
+            "health": "/health (GET)"
         }
     }
 
@@ -42,9 +44,14 @@ async def transcribe(
     style: str = Form(default="classical")
 ):
     """
-    Accept an audio file and return a simple melody (list of notes with durations).
-    This is a lightweight, free, open-source transcription service.
+    Transcribe audio to musical notation using Klang.io's professional API.
+    
+    Accepts audio files (WebM, MP3, WAV) and returns detected notes with accurate
+    pitch, octave, and duration information powered by Klang.io's ML models.
     """
+    print(f"[KLANG] Transcription request received")
+    print(f"[KLANG] Audio file: {audio.filename}, Content-Type: {audio.content_type}")
+    print(f"[KLANG] Parameters - Key: {key}, Tempo: {tempo}")
     try:
         # Save uploaded audio to a temp file
         with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as tmp:
