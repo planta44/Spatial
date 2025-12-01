@@ -31,3 +31,22 @@ __pycache__/
 *.dll
 *.so
 *.pyd
+
+
+
+
+
+# Ignore environment variables
+.env
+.env.local
+.env.production
+.env.development
+
+# Ignore backups
+*.env.backup
+
+# Ignore build folders
+node_modules/
+dist/
+build/
+
