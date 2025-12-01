@@ -50,3 +50,6 @@ node_modules/
 dist/
 build/
 
+# Environment
+backend/transcription-service/venv310/
+
