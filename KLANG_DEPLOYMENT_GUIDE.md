@@ -10,9 +10,9 @@
 
 ## 🚀 Quick Deployment Steps
 
-### 1. Update Render Environment Variables
+### 1. Update Python Transcription Service
 
-Go to your Python transcription service on Render and add:
+Go to your **Python transcription service** on Render and add:
 
 ```
 KLANG_API_KEY=0xkl-7c3da76296b2358e89c6077234506b3d
@@ -20,14 +20,33 @@ KLANG_API_KEY=0xkl-7c3da76296b2358e89c6077234506b3d
 
 **Steps:**
 1. Go to Render Dashboard: https://dashboard.render.com
-2. Find your transcription service (e.g., `spatial-tbrf`)
+2. Find your **Python transcription service** (e.g., `spatial-ai-transcription`)
 3. Click **Environment** tab
 4. Click **Add Environment Variable**
 5. Key: `KLANG_API_KEY`
 6. Value: `0xkl-7c3da76296b2358e89c6077234506b3d`
 7. Click **Save Changes**
 
-### 2. Trigger Redeploy
+### 2. Update Node.js Backend Service ⚠️ CRITICAL
+
+Go to your **Node.js backend service** on Render and add:
+
+```
+TRANSCRIPTION_SERVICE_URL=https://spatial-ai-transcription.onrender.com
+```
+
+**Steps:**
+1. Stay in Render Dashboard
+2. Find your **Node.js backend service** (different from Python service!)
+3. Click **Environment** tab
+4. Click **Add Environment Variable**
+5. Key: `TRANSCRIPTION_SERVICE_URL`
+6. Value: `https://spatial-ai-transcription.onrender.com` (your Python service URL)
+7. Click **Save Changes**
+
+> **Note:** Replace `spatial-ai-transcription.onrender.com` with your actual Python service URL from Step 1.
+
+### 3. Trigger Redeploy
 
 The service will automatically redeploy with the new code from GitHub.
 
@@ -86,10 +105,29 @@ Expected response:
 
 ## 🐛 Troubleshooting
 
+### Issue: "Request failed with status code 404" ⚠️ MOST COMMON
+
+**Symptoms:**
+- Transcription fails immediately
+- Error: "Transcription failed: Request failed with status code 404"
+- Python service logs show: `POST /transcription/performance HTTP/1.1" 404 Not Found`
+
+**Root Cause:** Node.js backend doesn't know where the Python service is!
+
+**Solution:**
+1. Go to **Node.js backend service** (not Python) on Render
+2. Add environment variable:
+   ```
+   TRANSCRIPTION_SERVICE_URL=https://spatial-ai-transcription.onrender.com
+   ```
+3. Use your actual Python service URL (check Python service dashboard for URL)
+4. Save and wait for auto-redeploy
+5. Test again
+
 ### Issue: "KLANG_API_KEY not found"
 
 **Solution:**
-- Check Render environment variables
+- Check Render environment variables in **Python service**
 - Ensure the key is exactly: `KLANG_API_KEY` (case-sensitive)
 - Redeploy after adding the variable
 
