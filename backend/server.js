@@ -60,6 +60,8 @@ app.use('/api/spatial-projects', spatialProjectRoutes);
 app.use('/api/curriculum', curriculumRoutes);
 app.use('/api/transcription', transcriptionRoutes);
 
+console.log('✅ All routes registered including /api/transcription');
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ 
