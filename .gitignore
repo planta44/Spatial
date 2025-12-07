@@ -53,3 +53,6 @@ build/
 # Environment
 backend/transcription-service/venv310/
 
+*.md
+*.mdd
+
