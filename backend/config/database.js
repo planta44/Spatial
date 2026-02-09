@@ -7,6 +7,9 @@ const sslEnabled =
   process.env.DB_SSL === 'true' ||
   process.env.DATABASE_SSL === 'true' ||
   /sslmode=require/i.test(process.env.DATABASE_URL || '');
+const shouldEnablePostgis =
+  process.env.DB_ENABLE_POSTGIS === 'true' ||
+  process.env.DB_SYNC === 'true';
 
 if (process.env.DATABASE_URL) {
   // Production: Use DATABASE_URL from Render PostgreSQL
@@ -68,6 +71,15 @@ const connectDB = async () => {
     await sequelize.authenticate();
     console.log('✅ PostgreSQL connected successfully');
     console.log(`📊 Database: ${process.env.DATABASE_URL ? process.env.DATABASE_URL.split('/').pop().split('?')[0] : process.env.DB_NAME || 'spatial_ai'}`);
+
+    if (shouldEnablePostgis) {
+      try {
+        await sequelize.query('CREATE EXTENSION IF NOT EXISTS postgis');
+        console.log('🧭 PostGIS extension ready');
+      } catch (error) {
+        console.warn('⚠️  PostGIS extension not available:', error.message);
+      }
+    }
     
     // Sync all models
     if (process.env.NODE_ENV === 'development' || process.env.DB_SYNC === 'true') {
