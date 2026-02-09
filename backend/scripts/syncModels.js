@@ -11,6 +11,7 @@ const Certification = require('../models/Certification');
 const UserCertification = require('../models/UserCertification');
 const Policy = require('../models/Policy');
 const Resource = require('../models/Resource');
+const PageContent = require('../models/PageContent');
 const SpatialAudio = require('../models/SpatialAudio');
 const Artist = require('../models/Artist');
 const RegionAnalytics = require('../models/RegionAnalytics');

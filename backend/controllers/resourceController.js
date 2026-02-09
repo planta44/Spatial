@@ -67,6 +67,12 @@ const getCloudinaryResourceType = (file) => {
   return 'raw';
 };
 
+const getNextSortOrder = async () => {
+  const maxSortOrder = await Resource.max('sortOrder');
+  const safeMax = Number.isFinite(Number(maxSortOrder)) ? Number(maxSortOrder) : 0;
+  return safeMax + 1;
+};
+
 // @desc    Get all resources
 // @route   GET /api/resources
 // @access  Public
@@ -92,7 +98,7 @@ const getResources = async (req, res) => {
       where,
       offset: skip,
       limit: limitNum,
-      order: [['createdAt', 'DESC']]
+      order: [['sortOrder', 'ASC'], ['createdAt', 'DESC']]
     });
 
     const total = await Resource.count({ where });
@@ -133,10 +139,15 @@ const getResource = async (req, res) => {
 // @access  Private (Teacher/Admin)
 const createResource = async (req, res) => {
   try {
+    const providedSortOrder = Number(req.body.sortOrder);
+    const sortOrder = Number.isFinite(providedSortOrder)
+      ? providedSortOrder
+      : await getNextSortOrder();
     const resourceData = {
       ...req.body,
       authorId: req.user.id,
-      authorName: req.user.name || req.body.authorName || null
+      authorName: req.user.name || req.body.authorName || null,
+      sortOrder
     };
 
     const resource = await Resource.create(resourceData);
@@ -245,7 +256,7 @@ const getResourcesByCategory = async (req, res) => {
     const resources = await Resource.findAll({
       where: { category, isPublished: true },
       limit: parseInt(limit, 10),
-      order: [['createdAt', 'DESC']]
+      order: [['sortOrder', 'ASC'], ['createdAt', 'DESC']]
     });
 
     successResponse(res, 200, `Resources in ${category}`, {
@@ -286,7 +297,7 @@ const getResourcesAdmin = async (req, res) => {
       where,
       offset: skip,
       limit: limitNum,
-      order: [['createdAt', 'DESC']]
+      order: [['sortOrder', 'ASC'], ['createdAt', 'DESC']]
     });
 
     const total = await Resource.count({ where });
@@ -296,6 +307,41 @@ const getResourcesAdmin = async (req, res) => {
   } catch (error) {
     console.error('Get admin resources error:', error);
     errorResponse(res, 500, 'Error fetching admin resources');
+  }
+};
+
+// @desc    Reorder resources
+// @route   PUT /api/resources/reorder
+// @access  Private (Teacher/Admin)
+const reorderResources = async (req, res) => {
+  try {
+    const orderedIds = Array.isArray(req.body?.orderedIds) ? req.body.orderedIds : [];
+    if (orderedIds.length === 0) {
+      return errorResponse(res, 400, 'orderedIds array is required');
+    }
+
+    const uniqueIds = [...new Set(orderedIds.filter(Boolean))];
+    const transaction = await Resource.sequelize.transaction();
+
+    try {
+      await Promise.all(
+        uniqueIds.map((id, index) =>
+          Resource.update(
+            { sortOrder: index + 1 },
+            { where: { id }, transaction }
+          )
+        )
+      );
+      await transaction.commit();
+    } catch (error) {
+      await transaction.rollback();
+      throw error;
+    }
+
+    return successResponse(res, 200, 'Resource order updated');
+  } catch (error) {
+    console.error('Reorder resources error:', error);
+    return errorResponse(res, 500, 'Error updating resource order');
   }
 };
 
@@ -354,5 +400,6 @@ module.exports = {
   deleteResource,
   rateResource,
   getResourcesByCategory,
-  uploadResourceAsset
+  uploadResourceAsset,
+  reorderResources
 };

@@ -27,6 +27,12 @@ const getVideoEmbedUrl = (url) => {
   return '';
 };
 
+const getPdfEmbedUrl = (url) => {
+  if (!url) return '';
+  const params = 'view=FitH&toolbar=0&navpanes=0&scrollbar=1';
+  return url.includes('#') ? `${url}&${params}` : `${url}#${params}`;
+};
+
 const isVideoFile = (url) => /\.(mp4|webm|ogg)$/i.test(url || '');
 
 const ResourceDetail = () => {
@@ -229,6 +235,7 @@ const ResourceDetail = () => {
                 }
                 if (block.type === 'pdf') {
                   const pdfUrl = resolveAssetUrl(block.url);
+                  const embedUrl = getPdfEmbedUrl(pdfUrl);
                   return (
                     <div key={key} className="space-y-3">
                       <div className="flex items-center justify-between gap-3 bg-gray-50 border border-gray-200 rounded-lg p-3">
@@ -245,11 +252,14 @@ const ResourceDetail = () => {
                         )}
                       </div>
                       {pdfUrl && (
-                        <iframe
-                          src={pdfUrl}
-                          title={block.caption || 'PDF preview'}
-                          className="w-full h-96 border border-gray-200 rounded-lg"
-                        />
+                        <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
+                          <iframe
+                            src={embedUrl}
+                            title={block.caption || 'PDF preview'}
+                            className="w-full min-h-[640px] bg-white"
+                            loading="lazy"
+                          />
+                        </div>
                       )}
                     </div>
                   );

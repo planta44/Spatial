@@ -86,6 +86,10 @@ const Resource = sequelize.define('Resource', {
       channels: null
     }
   },
+  sortOrder: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0
+  },
   views: {
     type: DataTypes.INTEGER,
     defaultValue: 0

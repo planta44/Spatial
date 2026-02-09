@@ -21,7 +21,9 @@ const uploadBuffer = ({ buffer, folder, resourceType = 'auto', originalFilename 
       folder,
       resource_type: resourceType,
       use_filename: true,
-      unique_filename: true
+      unique_filename: true,
+      access_mode: 'public',
+      type: 'upload'
     };
 
     if (originalFilename) {

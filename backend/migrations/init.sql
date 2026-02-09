@@ -15,6 +15,7 @@ DROP TABLE IF EXISTS region_analytics CASCADE;
 DROP TABLE IF EXISTS artists CASCADE;
 DROP TABLE IF EXISTS spatial_audios CASCADE;
 DROP TABLE IF EXISTS policies CASCADE;
+DROP TABLE IF EXISTS page_contents CASCADE;
 DROP TABLE IF EXISTS resources CASCADE;
 DROP TABLE IF EXISTS universities CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
@@ -233,6 +234,17 @@ CREATE TABLE user_certifications (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE page_contents (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    slug VARCHAR(150) UNIQUE NOT NULL,
+    title VARCHAR(255),
+    content JSONB DEFAULT '{}'::jsonb,
+    created_by UUID REFERENCES users(id),
+    updated_by UUID REFERENCES users(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Legacy tables for existing functionality
 CREATE TABLE policies (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -271,6 +283,7 @@ CREATE TABLE resources (
     prerequisites TEXT[],
     tags TEXT[],
     language VARCHAR(10) DEFAULT 'en',
+    sort_order INTEGER DEFAULT 0,
     created_by UUID REFERENCES users(id),
     university_id UUID REFERENCES universities(id),
     is_public BOOLEAN DEFAULT true,

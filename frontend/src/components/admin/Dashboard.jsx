@@ -178,7 +178,7 @@ const Dashboard = ({ onLogout }) => {
       </div>
 
       {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <button
           onClick={() => navigate('/admin/users')}
           className="bg-white p-6 rounded-lg shadow-md hover:shadow-xl transition-shadow text-left"
@@ -199,6 +199,17 @@ const Dashboard = ({ onLogout }) => {
           </div>
           <h4 className="font-semibold text-gray-900 mb-2">Add Resources</h4>
           <p className="text-sm text-gray-600">Upload new training materials</p>
+        </button>
+
+        <button
+          onClick={() => navigate('/admin/pages')}
+          className="bg-white p-6 rounded-lg shadow-md hover:shadow-xl transition-shadow text-left"
+        >
+          <div className="bg-indigo-100 w-12 h-12 rounded-lg flex items-center justify-center mb-4">
+            <BookOpen className="h-6 w-6 text-indigo-600" />
+          </div>
+          <h4 className="font-semibold text-gray-900 mb-2">Edit Page Content</h4>
+          <p className="text-sm text-gray-600">Update static page copy and sections</p>
         </button>
 
         <button className="bg-white p-6 rounded-lg shadow-md hover:shadow-xl transition-shadow text-left">

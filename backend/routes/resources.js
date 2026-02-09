@@ -10,13 +10,15 @@ const {
   rateResource,
   getResourcesByCategory,
   getResourcesAdmin,
-  uploadResourceAsset
+  uploadResourceAsset,
+  reorderResources
 } = require('../controllers/resourceController');
 
 // Public routes
 router.get('/', getResources);
 router.get('/admin', protect, authorize('teacher', 'admin'), getResourcesAdmin);
 router.get('/category/:category', getResourcesByCategory);
+router.put('/reorder', protect, authorize('teacher', 'admin'), reorderResources);
 router.get('/:id', getResource);
 
 // Protected routes

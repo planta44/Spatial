@@ -60,6 +60,7 @@ export const resourcesAPI = {
   update: (id, data) => api.put(`/resources/${id}`, data),
   delete: (id) => api.delete(`/resources/${id}`),
   rate: (id, rating) => api.post(`/resources/${id}/rate`, { rating }),
+  reorder: (orderedIds) => api.put('/resources/reorder', { orderedIds }),
   uploadAsset: (formData) =>
     api.post('/resources/upload', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
@@ -75,6 +76,11 @@ export const policiesAPI = {
   create: (data) => api.post('/policies', data),
   update: (id, data) => api.put(`/policies/${id}`, data),
   delete: (id) => api.delete(`/policies/${id}`),
+};
+
+export const pageContentsAPI = {
+  getBySlug: (slug) => api.get(`/page-contents/${slug}`),
+  upsert: (slug, data) => api.put(`/page-contents/${slug}`, data),
 };
 
 // Spatial audio endpoints

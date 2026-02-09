@@ -124,6 +124,30 @@ const AdminResources = () => {
     });
   };
 
+  const updateResourceOrder = async (nextResources) => {
+    try {
+      setResources(nextResources);
+      const orderedIds = nextResources.map((resource) => resource.id).filter(Boolean);
+      if (orderedIds.length > 0) {
+        await resourcesAPI.reorder(orderedIds);
+      }
+    } catch (error) {
+      console.error('Failed to reorder resources:', error);
+      toast.error('Failed to save order');
+      await loadResources();
+    }
+  };
+
+  const moveResourceCard = (fromIndex, toIndex) => {
+    if (toIndex < 0 || toIndex >= resources.length) {
+      return;
+    }
+    const nextResources = [...resources];
+    const [moved] = nextResources.splice(fromIndex, 1);
+    nextResources.splice(toIndex, 0, moved);
+    updateResourceOrder(nextResources);
+  };
+
   const handleBlockUpload = async (index, file, options = {}) => {
     if (!file) return;
     try {
@@ -269,19 +293,39 @@ const AdminResources = () => {
             <p className="text-sm text-gray-500">No resources yet.</p>
           ) : (
             <div className="space-y-3 max-h-[520px] overflow-y-auto pr-2">
-              {resources.map((resource) => (
+              {resources.map((resource, index) => (
                 <div key={resource.id} className="border border-gray-200 rounded-lg p-3">
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <p className="font-medium text-gray-900">{resource.title}</p>
                       <p className="text-xs text-gray-500">{resource.category} • {resource.type}</p>
                     </div>
-                    <button
-                      onClick={() => handleEdit(resource)}
-                      className="text-xs text-blue-600 hover:text-blue-700"
-                    >
-                      Edit
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => moveResourceCard(index, index - 1)}
+                        disabled={index === 0}
+                        className="text-xs text-gray-500 hover:text-gray-700 disabled:opacity-40"
+                        title="Move up"
+                      >
+                        <ArrowUp className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => moveResourceCard(index, index + 1)}
+                        disabled={index === resources.length - 1}
+                        className="text-xs text-gray-500 hover:text-gray-700 disabled:opacity-40"
+                        title="Move down"
+                      >
+                        <ArrowDown className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => handleEdit(resource)}
+                        className="text-xs text-blue-600 hover:text-blue-700"
+                      >
+                        Edit
+                      </button>
+                    </div>
                   </div>
                   <div className="mt-2 text-xs text-gray-500">
                     {resource.isPublished ? 'Published' : 'Draft'}
