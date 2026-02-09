@@ -7,8 +7,10 @@ import Training from './pages/Training';
 import Resources from './pages/Resources';
 import Policies from './pages/Policies';
 import Admin from './pages/Admin';
+import AdminResources from './pages/AdminResources';
 import TeacherTraining from './pages/TeacherTraining';
 import StudentPractice from './pages/StudentPractice';
+import ResourceDetail from './pages/ResourceDetail';
 
 function App() {
   return (
@@ -22,7 +24,9 @@ function App() {
           <Route path="/training" element={<Training />} />
           <Route path="/policies" element={<Policies />} />
           <Route path="/resources" element={<Resources />} />
+          <Route path="/resources/:id" element={<ResourceDetail />} />
           <Route path="/admin" element={<Admin />} />
+          <Route path="/admin/resources" element={<AdminResources />} />
           <Route path="/teacher-training" element={<TeacherTraining />} />
           <Route path="/practice" element={<StudentPractice />} />
         </Routes>

@@ -11,6 +11,10 @@ export const RESOURCE_TYPES = {
   DOCUMENT: 'document',
   INTERACTIVE: 'interactive',
   ASSESSMENT: 'assessment',
+  COLLECTION: 'collection',
+  LESSON: 'lesson',
+  GUIDE: 'guide',
+  WORKSHEET: 'worksheet',
 };
 
 export const RESOURCE_CATEGORIES = {
@@ -20,9 +24,13 @@ export const RESOURCE_CATEGORIES = {
   PRACTICAL: 'practical',
   TECHNOLOGY: 'technology',
   POLICY: 'policy',
+  K12_CHORAL: 'k-12-choral',
+  CHORAL_EDUCATOR: 'choral-educator',
+  MUSIC_THEORY: 'music-theory',
 };
 
 export const DIFFICULTY_LEVELS = {
+  ALL_LEVELS: 'all-levels',
   BEGINNER: 'beginner',
   INTERMEDIATE: 'intermediate',
   ADVANCED: 'advanced',

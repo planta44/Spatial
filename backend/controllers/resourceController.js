@@ -1,5 +1,51 @@
 const Resource = require('../models/Resource');
+const { Op } = require('sequelize');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 const { getPagination, formatPaginationResponse, errorResponse, successResponse } = require('../utils/helpers');
+
+const ensureUploadDir = (dirPath) => {
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true });
+  }
+};
+
+const getResourceUploadDestination = (file) => {
+  if (file.mimetype.startsWith('image/')) {
+    return path.join('uploads', 'resources', 'images');
+  }
+  if (file.mimetype === 'application/pdf') {
+    return path.join('uploads', 'resources', 'pdfs');
+  }
+  return path.join('uploads', 'resources', 'files');
+};
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dest = getResourceUploadDestination(file);
+    ensureUploadDir(dest);
+    cb(null, dest);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+    cb(null, `${file.fieldname}-${uniqueSuffix}${path.extname(file.originalname)}`);
+  }
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 25 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const isImage = file.mimetype.startsWith('image/');
+    const isPdf = file.mimetype === 'application/pdf';
+    if (isImage || isPdf) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image and PDF files are allowed'));
+    }
+  }
+});
 
 // @desc    Get all resources
 // @route   GET /api/resources
@@ -9,35 +55,31 @@ const getResources = async (req, res) => {
     const { page = 1, limit = 10, category, difficulty, type, search } = req.query;
     const { skip, limit: limitNum, page: pageNum } = getPagination(page, limit);
 
-    // Build query
-    const query = { isPublished: true };
+    const where = { isPublished: true };
 
-    if (category) query.category = category;
-    if (difficulty) query.difficulty = difficulty;
-    if (type) query.type = type;
+    if (category) where.category = category;
+    if (difficulty) where.difficulty = difficulty;
+    if (type) where.type = type;
     if (search) {
-      query.$or = [
-        { title: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } },
-        { tags: { $in: [new RegExp(search, 'i')] } }
+      where[Op.or] = [
+        { title: { [Op.iLike]: `%${search}%` } },
+        { description: { [Op.iLike]: `%${search}%` } },
+        { tags: { [Op.contains]: [search] } }
       ];
     }
 
-    // Execute query
-    const resources = await Resource.find(query)
-      .populate('author', 'name university')
-      .skip(skip)
-      .limit(limitNum)
-      .sort({ createdAt: -1 });
+    const resources = await Resource.findAll({
+      where,
+      offset: skip,
+      limit: limitNum,
+      order: [['createdAt', 'DESC']]
+    });
 
-    const total = await Resource.countDocuments(query);
+    const total = await Resource.count({ where });
 
     const response = formatPaginationResponse(resources, total, pageNum, limitNum);
 
-    res.json({
-      success: true,
-      ...response
-    });
+    successResponse(res, 200, 'Resources retrieved', response);
   } catch (error) {
     console.error('Get resources error:', error);
     errorResponse(res, 500, 'Error fetching resources');
@@ -49,16 +91,14 @@ const getResources = async (req, res) => {
 // @access  Public
 const getResource = async (req, res) => {
   try {
-    const resource = await Resource.findById(req.params.id)
-      .populate('author', 'name university avatar')
-      .populate('prerequisites', 'title difficulty');
+    const resource = await Resource.findByPk(req.params.id);
 
     if (!resource) {
       return errorResponse(res, 404, 'Resource not found');
     }
 
     // Increment views
-    resource.views += 1;
+    resource.views = (resource.views || 0) + 1;
     await resource.save();
 
     successResponse(res, 200, 'Resource retrieved', { resource });
@@ -75,7 +115,8 @@ const createResource = async (req, res) => {
   try {
     const resourceData = {
       ...req.body,
-      author: req.user.id
+      authorId: req.user.id,
+      authorName: req.user.name || req.body.authorName || null
     };
 
     const resource = await Resource.create(resourceData);
@@ -92,22 +133,18 @@ const createResource = async (req, res) => {
 // @access  Private (Owner/Admin)
 const updateResource = async (req, res) => {
   try {
-    const resource = await Resource.findById(req.params.id);
+    const resource = await Resource.findByPk(req.params.id);
 
     if (!resource) {
       return errorResponse(res, 404, 'Resource not found');
     }
 
     // Check ownership
-    if (resource.author.toString() !== req.user.id && req.user.role !== 'admin') {
+    if (String(resource.authorId) !== String(req.user.id) && req.user.role !== 'admin') {
       return errorResponse(res, 403, 'Not authorized to update this resource');
     }
 
-    const updatedResource = await Resource.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true, runValidators: true }
-    );
+    const updatedResource = await resource.update(req.body);
 
     successResponse(res, 200, 'Resource updated successfully', { resource: updatedResource });
   } catch (error) {
@@ -121,18 +158,18 @@ const updateResource = async (req, res) => {
 // @access  Private (Owner/Admin)
 const deleteResource = async (req, res) => {
   try {
-    const resource = await Resource.findById(req.params.id);
+    const resource = await Resource.findByPk(req.params.id);
 
     if (!resource) {
       return errorResponse(res, 404, 'Resource not found');
     }
 
     // Check ownership
-    if (resource.author.toString() !== req.user.id && req.user.role !== 'admin') {
+    if (String(resource.authorId) !== String(req.user.id) && req.user.role !== 'admin') {
       return errorResponse(res, 403, 'Not authorized to delete this resource');
     }
 
-    await resource.deleteOne();
+    await resource.destroy();
 
     successResponse(res, 200, 'Resource deleted successfully');
   } catch (error) {
@@ -152,7 +189,7 @@ const rateResource = async (req, res) => {
       return errorResponse(res, 400, 'Rating must be between 1 and 5');
     }
 
-    const resource = await Resource.findById(req.params.id);
+    const resource = await Resource.findByPk(req.params.id);
 
     if (!resource) {
       return errorResponse(res, 404, 'Resource not found');
@@ -185,17 +222,15 @@ const getResourcesByCategory = async (req, res) => {
     const { category } = req.params;
     const { limit = 10 } = req.query;
 
-    const resources = await Resource.find({ 
-      category, 
-      isPublished: true 
-    })
-      .populate('author', 'name university')
-      .limit(parseInt(limit))
-      .sort({ 'rating.average': -1 });
+    const resources = await Resource.findAll({
+      where: { category, isPublished: true },
+      limit: parseInt(limit, 10),
+      order: [['createdAt', 'DESC']]
+    });
 
-    successResponse(res, 200, `Resources in ${category}`, { 
+    successResponse(res, 200, `Resources in ${category}`, {
       count: resources.length,
-      resources 
+      resources
     });
   } catch (error) {
     console.error('Get resources by category error:', error);
@@ -203,12 +238,77 @@ const getResourcesByCategory = async (req, res) => {
   }
 };
 
+// @desc    Get all resources for admin
+// @route   GET /api/resources/admin
+// @access  Private (Teacher/Admin)
+const getResourcesAdmin = async (req, res) => {
+  try {
+    const { page = 1, limit = 20, category, difficulty, type, search, isPublished } = req.query;
+    const { skip, limit: limitNum, page: pageNum } = getPagination(page, limit);
+
+    const where = {};
+
+    if (category) where.category = category;
+    if (difficulty) where.difficulty = difficulty;
+    if (type) where.type = type;
+    if (isPublished !== undefined) {
+      where.isPublished = isPublished === 'true' || isPublished === true;
+    }
+    if (search) {
+      where[Op.or] = [
+        { title: { [Op.iLike]: `%${search}%` } },
+        { description: { [Op.iLike]: `%${search}%` } },
+        { tags: { [Op.contains]: [search] } }
+      ];
+    }
+
+    const resources = await Resource.findAll({
+      where,
+      offset: skip,
+      limit: limitNum,
+      order: [['createdAt', 'DESC']]
+    });
+
+    const total = await Resource.count({ where });
+    const response = formatPaginationResponse(resources, total, pageNum, limitNum);
+
+    successResponse(res, 200, 'Admin resources retrieved', response);
+  } catch (error) {
+    console.error('Get admin resources error:', error);
+    errorResponse(res, 500, 'Error fetching admin resources');
+  }
+};
+
+// @desc    Upload resource asset (image or PDF)
+// @route   POST /api/resources/upload
+// @access  Private (Teacher/Admin)
+const uploadResourceAsset = [
+  upload.single('file'),
+  (req, res) => {
+    if (!req.file) {
+      return errorResponse(res, 400, 'No file uploaded');
+    }
+
+    const normalizedPath = req.file.path.replace(/\\/g, '/');
+    const fileUrl = `/${normalizedPath}`;
+
+    return successResponse(res, 201, 'File uploaded successfully', {
+      url: fileUrl,
+      fileName: req.file.originalname,
+      mimeType: req.file.mimetype,
+      size: req.file.size
+    });
+  }
+];
+
 module.exports = {
   getResources,
+  getResourcesAdmin,
   getResource,
   createResource,
   updateResource,
   deleteResource,
   rateResource,
-  getResourcesByCategory
+  getResourcesByCategory,
+  uploadResourceAsset
 };

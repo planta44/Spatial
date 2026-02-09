@@ -24,7 +24,7 @@ const protect = async (req, res, next) => {
       const decoded = jwt.verify(token, process.env.JWT_SECRET || 'spatial-ai-secret-key');
       
       // Get user from token
-      req.user = await User.findById(decoded.id).select('-password');
+      req.user = await User.findByPk(decoded.id);
       
       if (!req.user) {
         return res.status(401).json({
@@ -80,7 +80,7 @@ const optionalAuth = async (req, res, next) => {
     if (token) {
       try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET || 'spatial-ai-secret-key');
-        req.user = await User.findById(decoded.id).select('-password');
+        req.user = await User.findByPk(decoded.id);
       } catch (error) {
         // Invalid token, but continue without user
         req.user = null;

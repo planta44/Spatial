@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+
 import { LogIn, Lock, Mail } from 'lucide-react';
 import Dashboard from '../components/admin/Dashboard';
 import toast from 'react-hot-toast';
@@ -10,6 +11,15 @@ const Admin = () => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    const user = localStorage.getItem('user');
+
+    if (token && user) {
+      setIsLoggedIn(true);
+    }
+  }, []);
+
   const handleLogin = async (e) => {
     e.preventDefault();
     
@@ -19,19 +29,33 @@ const Admin = () => {
     }
 
     setLoading(true);
-    
-    // Simulate login (in production, this would call the API)
-    setTimeout(() => {
-      if (email === 'admin@spatialai.edu' && password === 'admin123') {
-        localStorage.setItem('token', 'mock-token');
-        localStorage.setItem('user', JSON.stringify({ email, role: 'admin' }));
-        setIsLoggedIn(true);
-        toast.success('Welcome back, Admin!');
-      } else {
-        toast.error('Invalid credentials');
+
+    try {
+      const response = await authAPI.login({ email, password });
+      const payload = response?.data?.data || {};
+      const user = payload.user;
+      const token = payload.token;
+
+      if (!token || !user) {
+        throw new Error('Invalid login response');
       }
+
+      if (!['admin', 'teacher'].includes(user.role)) {
+        toast.error('You do not have admin access.');
+        setLoading(false);
+        return;
+      }
+
+      localStorage.setItem('token', token);
+      localStorage.setItem('user', JSON.stringify(user));
+      setIsLoggedIn(true);
+      toast.success(`Welcome back, ${user.role === 'admin' ? 'Admin' : user.name}!`);
+    } catch (error) {
+      console.error('Admin login failed:', error);
+      toast.error(error.response?.data?.message || 'Invalid credentials');
+    } finally {
       setLoading(false);
-    }, 1000);
+    }
   };
 
   const handleLogout = () => {
@@ -73,7 +97,7 @@ const Admin = () => {
                   id="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@spatialai.edu"
+                  placeholder="admin@yourdomain.com"
                   className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                   required
                 />
@@ -121,9 +145,8 @@ const Admin = () => {
 
           {/* Demo Credentials */}
           <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-            <p className="text-sm text-gray-600 mb-2 font-medium">Demo Credentials:</p>
-            <p className="text-sm text-gray-500">Email: admin@spatialai.edu</p>
-            <p className="text-sm text-gray-500">Password: admin123</p>
+            <p className="text-sm text-gray-600 mb-2 font-medium">Admin Access</p>
+            <p className="text-sm text-gray-500">Use your admin account credentials to continue.</p>
           </div>
         </div>
 

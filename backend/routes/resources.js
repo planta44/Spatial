@@ -8,17 +8,22 @@ const {
   updateResource,
   deleteResource,
   rateResource,
-  getResourcesByCategory
+  getResourcesByCategory,
+  getResourcesAdmin,
+  uploadResourceAsset
 } = require('../controllers/resourceController');
 
 // Public routes
 router.get('/', getResources);
+router.get('/admin', protect, authorize('teacher', 'admin'), getResourcesAdmin);
 router.get('/category/:category', getResourcesByCategory);
 router.get('/:id', getResource);
 
 // Protected routes
+router.post('/upload', protect, authorize('teacher', 'admin'), uploadResourceAsset);
 router.post('/', protect, authorize('teacher', 'admin'), createResource);
 router.put('/:id', protect, updateResource);
+
 router.delete('/:id', protect, deleteResource);
 router.post('/:id/rate', protect, rateResource);
 

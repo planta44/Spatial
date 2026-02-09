@@ -23,15 +23,15 @@ const Resource = sequelize.define('Resource', {
     }
   },
   type: {
-    type: DataTypes.ENUM('module', 'video', 'audio', 'document', 'interactive', 'assessment'),
+    type: DataTypes.STRING,
     allowNull: false
   },
   category: {
-    type: DataTypes.ENUM('spatial-audio', 'pedagogy', 'theory', 'practical', 'technology', 'policy'),
+    type: DataTypes.STRING,
     allowNull: false
   },
   difficulty: {
-    type: DataTypes.ENUM('beginner', 'intermediate', 'advanced'),
+    type: DataTypes.STRING,
     defaultValue: 'beginner'
   },
   duration: {
@@ -41,7 +41,15 @@ const Resource = sequelize.define('Resource', {
   },
   fileUrl: {
     type: DataTypes.STRING,
-    allowNull: false
+    allowNull: true
+  },
+  contentBlocks: {
+    type: DataTypes.JSONB,
+    defaultValue: []
+  },
+  authorName: {
+    type: DataTypes.STRING,
+    allowNull: true
   },
   thumbnailUrl: {
     type: DataTypes.STRING,

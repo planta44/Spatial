@@ -1,0 +1,305 @@
+"""
+Audiveris client for optical music recognition.
+Handles communication with Audiveris engine.
+"""
+
+import subprocess
+import logging
+import os
+from pathlib import Path
+from typing import Dict, Optional
+import xml.etree.ElementTree as ET
+
+logger = logging.getLogger(__name__)
+
+# Audiveris configuration
+AUDIVERIS_JAR = os.getenv("AUDIVERIS_JAR", "/opt/audiveris/Audiveris.jar")
+JAVA_PATH = os.getenv("JAVA_PATH", "java")
+
+
+def check_audiveris_installation() -> bool:
+    """Check if Audiveris is properly installed."""
+    try:
+        # Check if Java is available
+        result = subprocess.run(
+            [JAVA_PATH, "-version"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        
+        if result.returncode != 0:
+            logger.error("Java is not installed or not in PATH")
+            return False
+        
+        # Check if Audiveris JAR exists
+        if not Path(AUDIVERIS_JAR).exists():
+            logger.error(f"Audiveris JAR not found at: {AUDIVERIS_JAR}")
+            return False
+        
+        logger.info("Audiveris installation verified")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error checking Audiveris installation: {e}")
+        return False
+
+
+def process_with_audiveris(
+    image_path: str,
+    output_dir: str,
+    output_format: str = "musicxml"
+) -> Dict:
+    """
+    Process image with Audiveris OMR engine.
+    
+    Args:
+        image_path: Path to preprocessed image
+        output_dir: Directory for output files
+        output_format: Output format (musicxml, midi, pdf)
+    
+    Returns:
+        Dictionary containing paths to generated files and metadata
+    """
+    logger.info(f"Processing {image_path} with Audiveris...")
+    
+    # Verify Audiveris installation
+    if not check_audiveris_installation():
+        raise RuntimeError("Audiveris is not properly installed")
+    
+    # Prepare output paths
+    output_dir_path = Path(output_dir)
+    output_dir_path.mkdir(exist_ok=True)
+    
+    base_name = Path(image_path).stem
+    output_base = output_dir_path / base_name
+    
+    # Build Audiveris command
+    # Audiveris command line options:
+    # -batch: Run in batch mode (no GUI)
+    # -export: Export to specified format
+    # -output: Output directory
+    
+    cmd = [
+        JAVA_PATH,
+        "-jar", AUDIVERIS_JAR,
+        "-batch",
+        "-export"
+    ]
+    
+    # Temporary: Use basic export for all formats
+    # Audiveris will export to its default format (MusicXML)
+    cmd.append(image_path)
+    
+    # Set output options
+    cmd.extend(["-output", str(output_dir_path)])
+    
+    try:
+        logger.info(f"Running Audiveris command: {' '.join(cmd)}")
+        
+        # Run Audiveris
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=120,  # 2 minute timeout
+            cwd=str(output_dir_path)
+        )
+        
+        # Log output
+        if result.stdout:
+            logger.info(f"Audiveris stdout: {result.stdout}")
+        if result.stderr:
+            logger.warning(f"Audiveris stderr: {result.stderr}")
+        
+        if result.returncode != 0:
+            raise RuntimeError(f"Audiveris failed with code {result.returncode}: {result.stderr}")
+        
+        # Find generated files
+        generated_files = find_generated_files(output_dir_path, base_name)
+        
+        # Convert to requested formats if needed
+        if "musicxml" in generated_files:
+            musicxml_path = generated_files["musicxml"]
+            
+            # Convert to MIDI if requested
+            if output_format == "midi" or output_format == "all":
+                midi_path = convert_to_midi(musicxml_path)
+                if midi_path:
+                    generated_files["midi"] = midi_path
+            
+            # Convert to PDF if requested (requires additional tools)
+            if output_format == "pdf" or output_format == "all":
+                pdf_path = convert_to_pdf(musicxml_path)
+                if pdf_path:
+                    generated_files["pdf"] = pdf_path
+        
+        # Extract metadata from MusicXML
+        metadata = {}
+        if "musicxml" in generated_files:
+            metadata = extract_musicxml_metadata(generated_files["musicxml"])
+        
+        logger.info("Audiveris processing complete")
+        
+        return {
+            "status": "success",
+            "files": generated_files,
+            "metadata": metadata
+        }
+        
+    except subprocess.TimeoutExpired:
+        logger.error("Audiveris processing timed out")
+        raise RuntimeError("Audiveris processing timed out (>2 minutes)")
+    
+    except Exception as e:
+        logger.error(f"Audiveris processing failed: {e}")
+        raise
+
+
+def find_generated_files(output_dir: Path, base_name: str) -> Dict[str, str]:
+    """Find files generated by Audiveris."""
+    files = {}
+    
+    # Look for MusicXML files
+    for ext in ['.mxl', '.musicxml', '.xml']:
+        musicxml_file = output_dir / f"{base_name}{ext}"
+        if musicxml_file.exists():
+            files["musicxml"] = str(musicxml_file)
+            break
+    
+    # Look for other possible outputs
+    for pattern in ['*.mxl', '*.musicxml', '*.xml', '*.mid', '*.midi', '*.pdf']:
+        matches = list(output_dir.glob(pattern))
+        if matches:
+            file_type = pattern.replace('*.', '').replace('mxl', 'musicxml')
+            if file_type not in files:
+                files[file_type] = str(matches[0])
+    
+    logger.info(f"Found generated files: {list(files.keys())}")
+    return files
+
+
+def extract_musicxml_metadata(musicxml_path: str) -> Dict:
+    """Extract metadata from MusicXML file."""
+    try:
+        tree = ET.parse(musicxml_path)
+        root = tree.getroot()
+        
+        metadata = {
+            "title": "",
+            "composer": "",
+            "key": "",
+            "time_signature": "",
+            "tempo": "",
+            "measures": 0,
+            "parts": 0
+        }
+        
+        # Extract work title
+        work = root.find('.//work/work-title')
+        if work is not None:
+            metadata["title"] = work.text or ""
+        
+        # Extract composer
+        composer = root.find('.//identification/creator[@type="composer"]')
+        if composer is not None:
+            metadata["composer"] = composer.text or ""
+        
+        # Count parts
+        parts = root.findall('.//part')
+        metadata["parts"] = len(parts)
+        
+        # Count measures in first part
+        if parts:
+            measures = parts[0].findall('.//measure')
+            metadata["measures"] = len(measures)
+        
+        # Extract key signature (from first measure)
+        key_elem = root.find('.//key')
+        if key_elem is not None:
+            fifths = key_elem.find('fifths')
+            mode = key_elem.find('mode')
+            if fifths is not None:
+                key_num = int(fifths.text)
+                key_map = {
+                    -7: "Cb", -6: "Gb", -5: "Db", -4: "Ab", -3: "Eb", -2: "Bb", -1: "F",
+                    0: "C", 1: "G", 2: "D", 3: "A", 4: "E", 5: "B", 6: "F#", 7: "C#"
+                }
+                key_name = key_map.get(key_num, "C")
+                mode_name = mode.text if mode is not None else "major"
+                metadata["key"] = f"{key_name} {mode_name}"
+        
+        # Extract time signature
+        time_elem = root.find('.//time')
+        if time_elem is not None:
+            beats = time_elem.find('beats')
+            beat_type = time_elem.find('beat-type')
+            if beats is not None and beat_type is not None:
+                metadata["time_signature"] = f"{beats.text}/{beat_type.text}"
+        
+        # Extract tempo
+        tempo_elem = root.find('.//sound[@tempo]')
+        if tempo_elem is not None:
+            metadata["tempo"] = tempo_elem.get('tempo', "")
+        
+        logger.info(f"Extracted metadata: {metadata}")
+        return metadata
+        
+    except Exception as e:
+        logger.error(f"Failed to extract metadata: {e}")
+        return {}
+
+
+def convert_to_midi(musicxml_path: str) -> Optional[str]:
+    """Convert MusicXML to MIDI using music21 (if available)."""
+    try:
+        # Try to import music21 for conversion
+        import music21
+        
+        # Load MusicXML
+        score = music21.converter.parse(musicxml_path)
+        
+        # Generate MIDI path
+        midi_path = Path(musicxml_path).with_suffix('.mid')
+        
+        # Write MIDI
+        score.write('midi', fp=str(midi_path))
+        
+        logger.info(f"Converted to MIDI: {midi_path}")
+        return str(midi_path)
+        
+    except ImportError:
+        logger.warning("music21 not installed, MIDI conversion unavailable")
+        return None
+    except Exception as e:
+        logger.error(f"MIDI conversion failed: {e}")
+        return None
+
+
+def convert_to_pdf(musicxml_path: str) -> Optional[str]:
+    """Convert MusicXML to PDF using MuseScore (if available)."""
+    try:
+        # Check if MuseScore is available
+        musescore_path = os.getenv("MUSESCORE_PATH", "musescore")
+        
+        # Generate PDF path
+        pdf_path = Path(musicxml_path).with_suffix('.pdf')
+        
+        # Run MuseScore to convert
+        result = subprocess.run(
+            [musescore_path, "-o", str(pdf_path), musicxml_path],
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        
+        if result.returncode == 0 and pdf_path.exists():
+            logger.info(f"Converted to PDF: {pdf_path}")
+            return str(pdf_path)
+        else:
+            logger.warning("PDF conversion failed or MuseScore not available")
+            return None
+            
+    except Exception as e:
+        logger.warning(f"PDF conversion not available: {e}")
+        return None

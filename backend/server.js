@@ -6,6 +6,7 @@ const bodyParser = require('body-parser');
 require('dotenv').config();
 
 const { connectDB } = require('./config/database');
+const User = require('./models/User');
 const authRoutes = require('./routes/auth');
 const resourceRoutes = require('./routes/resources');
 const policyRoutes = require('./routes/policies');
@@ -18,13 +19,67 @@ const transcriptionRoutes = require('./routes/transcription');
 
 const app = express();
 
+const ensureAdminUser = async () => {
+  const shouldSeed = process.env.SEED_ADMIN !== 'false';
+  if (!shouldSeed) return;
+
+  const adminEmail = (process.env.ADMIN_EMAIL || 'admin@spatialai.edu').toLowerCase().trim();
+  const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
+  const adminName = process.env.ADMIN_NAME || 'Spatial AI Admin';
+  const isProduction = process.env.NODE_ENV === 'production';
+  const shouldResetPassword = !isProduction && process.env.RESET_ADMIN_PASSWORD !== 'false';
+
+  const [admin, created] = await User.findOrCreate({
+    where: { email: adminEmail },
+    defaults: {
+      name: adminName,
+      password: adminPassword,
+      role: 'admin',
+      isActive: true
+    }
+  });
+
+  if (!created) {
+    let needsSave = false;
+
+    if (admin.role !== 'admin') {
+      admin.role = 'admin';
+      needsSave = true;
+    }
+
+    if (!admin.isActive) {
+      admin.isActive = true;
+      needsSave = true;
+    }
+
+    if (shouldResetPassword) {
+      admin.password = adminPassword;
+      needsSave = true;
+    }
+
+    if (!admin.name) {
+      admin.name = adminName;
+      needsSave = true;
+    }
+
+    if (needsSave) {
+      await admin.save();
+    }
+  }
+
+  console.log(`✅ Admin user ready: ${adminEmail}`);
+};
+
 // Connect to database and sync models
-connectDB().then(() => {
-  console.log('✅ Database connected successfully');
-}).catch(error => {
-  console.error('❌ Database connection failed:', error);
-  process.exit(1);
-});
+connectDB()
+  .then(async () => {
+    console.log('✅ Database connected successfully');
+    await ensureAdminUser();
+  })
+  .catch(error => {
+    console.error('❌ Database connection failed:', error);
+    process.exit(1);
+  });
 
 // Security middleware
 app.use(helmet());

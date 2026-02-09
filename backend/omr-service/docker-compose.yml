@@ -1,0 +1,24 @@
+services:
+  omr-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: spatial-omr-service
+    ports:
+      - "8001:8001"
+    volumes:
+      # Mount directories for persistence
+      - ./uploads:/app/uploads
+      - ./processed:/app/processed
+      - ./output:/app/output
+    environment:
+      - AUDIVERIS_JAR=/opt/audiveris/Audiveris.jar
+      - JAVA_PATH=java
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s

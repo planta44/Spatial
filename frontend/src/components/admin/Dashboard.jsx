@@ -1,9 +1,13 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+
 import { Users, GraduationCap, FileText, TrendingUp, Activity, LogOut, BookOpen, Wand2 } from 'lucide-react';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { curriculumAPI } from '../../services/api';
 
 const Dashboard = ({ onLogout }) => {
+  const navigate = useNavigate();
+
   const [curriculumTitle, setCurriculumTitle] = useState('Advanced Conducting in the Digital Age');
   const [curriculumWeeks, setCurriculumWeeks] = useState(14);
   const [curriculumHoursPerWeek, setCurriculumHoursPerWeek] = useState(3);
@@ -175,7 +179,10 @@ const Dashboard = ({ onLogout }) => {
 
       {/* Quick Actions */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <button className="bg-white p-6 rounded-lg shadow-md hover:shadow-xl transition-shadow text-left">
+        <button
+          onClick={() => navigate('/admin/users')}
+          className="bg-white p-6 rounded-lg shadow-md hover:shadow-xl transition-shadow text-left"
+        >
           <div className="bg-blue-100 w-12 h-12 rounded-lg flex items-center justify-center mb-4">
             <Users className="h-6 w-6 text-blue-600" />
           </div>
@@ -183,7 +190,10 @@ const Dashboard = ({ onLogout }) => {
           <p className="text-sm text-gray-600">Add, edit, or remove user accounts</p>
         </button>
 
-        <button className="bg-white p-6 rounded-lg shadow-md hover:shadow-xl transition-shadow text-left">
+        <button
+          onClick={() => navigate('/admin/resources')}
+          className="bg-white p-6 rounded-lg shadow-md hover:shadow-xl transition-shadow text-left"
+        >
           <div className="bg-purple-100 w-12 h-12 rounded-lg flex items-center justify-center mb-4">
             <FileText className="h-6 w-6 text-purple-600" />
           </div>

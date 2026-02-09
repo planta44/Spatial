@@ -23,9 +23,15 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      window.location.href = '/';
+      const requestUrl = error.config?.url || '';
+      const isAuthRequest = requestUrl.includes('/auth/login') || requestUrl.includes('/auth/register');
+
+      if (!isAuthRequest) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        const isAdminRoute = window.location.pathname.startsWith('/admin');
+        window.location.href = isAdminRoute ? '/admin' : '/';
+      }
     }
     return Promise.reject(error);
   }
@@ -43,12 +49,17 @@ export const authAPI = {
 // Resources endpoints
 export const resourcesAPI = {
   getAll: (params) => api.get('/resources', { params }),
+  getAdmin: (params) => api.get('/resources/admin', { params }),
   getById: (id) => api.get(`/resources/${id}`),
   getByCategory: (category) => api.get(`/resources/category/${category}`),
   create: (data) => api.post('/resources', data),
   update: (id, data) => api.put(`/resources/${id}`, data),
   delete: (id) => api.delete(`/resources/${id}`),
   rate: (id, rating) => api.post(`/resources/${id}/rate`, { rating }),
+  uploadAsset: (formData) =>
+    api.post('/resources/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
 };
 
 // Policies endpoints

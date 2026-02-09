@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Search, Filter } from 'lucide-react';
 import ResourceCard from '../components/resources/ResourceCard';
 import { resourcesAPI } from '../services/api';
-import toast from 'react-hot-toast';
+import { DIFFICULTY_LEVELS, RESOURCE_CATEGORIES } from '../utils/constants';
 
 const Resources = () => {
   const [resources, setResources] = useState([]);
@@ -11,180 +11,147 @@ const Resources = () => {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedDifficulty, setSelectedDifficulty] = useState('all');
 
-  const categories = ['all', 'spatial-audio', 'pedagogy', 'theory', 'practical', 'technology', 'policy'];
-  const difficulties = ['all', 'beginner', 'intermediate', 'advanced'];
+  const categories = ['all', ...Object.values(RESOURCE_CATEGORIES)];
+  const difficulties = ['all', ...Object.values(DIFFICULTY_LEVELS)];
 
-  // Mock data with specific requested resources
-  const mockResources = [
+  // Curated fallback collections for choral educators and music theory
+  const fallbackResources = [
     {
-      _id: '1',
-      title: 'Introduction to AI Music Tools',
-      description: 'Comprehensive guide introducing educators to AI-powered music education tools and spatial audio systems.',
-      category: 'technology',
-      type: 'document',
-      difficulty: 'beginner',
-      duration: 60,
-      views: 2340,
-      rating: { average: 4.8, count: 156 },
-      author: { name: 'Spatial AI Education Team', university: 'Spatial AI Platform' },
+      _id: 'acda-k12',
+      title: 'ACDA: Resources for K-12 Choral Educators',
+      description: 'Curated collection with tools, articles, and guidance for K-12 choral directors.',
+      category: 'k-12-choral',
+      type: 'collection',
+      difficulty: 'all-levels',
+      duration: 20,
+      author: { name: 'American Choral Directors Association', university: 'acda.org' },
       thumbnailUrl: '',
+      content: `# K-12 Choral Educator Toolkit
+
+## Focus areas
+- Program planning and curriculum sequencing
+- Rehearsal strategy and warm-up design
+- Repertoire selection and concert programming
+- Assessment ideas and student growth tracking
+- Advocacy and community support for choral programs
+
+## Suggested use
+Use this toolkit as a planning companion when building units, running rehearsals, or preparing performance cycles.
+
+## Ideal for
+K-12 directors seeking practical, classroom-ready guidance.
+`,
     },
     {
-      _id: '2',
-      title: 'Spatial Audio Listening Exercise',
-      description: 'Structured 4-part exercise to develop acute spatial hearing skills and understand audio positioning effects.',
-      category: 'practical',
-      type: 'document',
-      difficulty: 'intermediate',
-      duration: 50,
-      views: 1890,
-      rating: { average: 4.7, count: 134 },
-      author: { name: 'Spatial AI Education Team', university: 'Spatial AI Platform' },
-      thumbnailUrl: '',
-    },
-    {
-      _id: '3',
-      title: 'Collaborative Composition Project',
-      description: 'Multi-week project guide for students to create original music using AI tools and spatial audio.',
-      category: 'pedagogy',
-      type: 'document',
-      difficulty: 'intermediate',
-      duration: 90,
-      views: 1567,
-      rating: { average: 4.9, count: 89 },
-      author: { name: 'Spatial AI Education Team', university: 'Spatial AI Platform' },
-      thumbnailUrl: '',
-    },
-    {
-      _id: '4',
-      title: 'AI Composition Rubric',
-      description: 'Detailed assessment criteria and scoring guide for AI-assisted music composition projects.',
-      category: 'pedagogy',
-      type: 'document',
-      difficulty: 'intermediate',
-      duration: 30,
-      views: 1234,
-      rating: { average: 4.6, count: 78 },
-      author: { name: 'Spatial AI Education Team', university: 'Spatial AI Platform' },
-      thumbnailUrl: '',
-    },
-    {
-      _id: '5',
-      title: 'Spatial Audio Project Checklist',
-      description: 'Comprehensive checklist covering all phases of spatial audio projects from setup to presentation.',
-      category: 'practical',
-      type: 'document',
-      difficulty: 'beginner',
-      duration: 25,
-      views: 1890,
-      rating: { average: 4.5, count: 112 },
-      author: { name: 'Spatial AI Education Team', university: 'Spatial AI Platform' },
-      thumbnailUrl: '',
-    },
-    {
-      _id: '6',
-      title: 'Academic Integrity Guidelines',
-      description: 'Complete ethical guidelines for AI-assisted creative work and collaborative projects.',
-      category: 'policy',
-      type: 'document',
-      difficulty: 'beginner',
-      duration: 35,
-      views: 2100,
-      rating: { average: 4.7, count: 145 },
-      author: { name: 'Spatial AI Education Team', university: 'Spatial AI Platform' },
-      thumbnailUrl: '',
-    },
-    {
-      _id: '7',
-      title: 'Binaural Audio Fundamentals',
-      description: 'Learn the basics of binaural audio recording and playback techniques for immersive music experiences.',
-      category: 'spatial-audio',
-      type: 'video',
-      difficulty: 'beginner',
+      _id: 'wis-choral-educator',
+      title: 'Wisconsin Choral Educator Resources',
+      description: 'Extensive educator toolkit with planning guides, rehearsal resources, repertoire ideas, and professional learning materials.',
+      category: 'choral-educator',
+      type: 'collection',
+      difficulty: 'all-levels',
       duration: 45,
-      views: 1234,
-      rating: { average: 4.5, count: 89 },
-      author: { name: 'Dr. Jane Mukami', university: 'University of Nairobi' },
+      author: { name: 'Wisconsin Choral Directors Association', university: 'wischoral.org' },
       thumbnailUrl: '',
+      content: `# Wisconsin Choral Educator Resources
+
+## Highlights
+- Planning templates and calendars
+- Festival and assessment preparation checklists
+- Rehearsal pacing and classroom management tips
+- Recruitment and retention ideas
+- Professional learning links
+
+## Suggested use
+Choose one focus area at a time and integrate a tool into your weekly planning routine.
+
+## Ideal for
+Middle and high school choral educators.
+`,
     },
     {
-      _id: '8',
-      title: 'Teaching Music Theory with Spatial Audio',
-      description: 'Innovative approaches to teaching traditional music theory using spatial audio technology.',
-      category: 'pedagogy',
-      type: 'module',
-      difficulty: 'intermediate',
-      duration: 60,
-      views: 856,
-      rating: { average: 4.7, count: 62 },
-      author: { name: 'Prof. John Kamau', university: 'Kenyatta University' },
-      thumbnailUrl: '',
-    },
-    {
-      _id: '9',
-      title: 'Advanced Ambisonic Techniques',
-      description: 'Master ambisonic recording, mixing, and playback for professional spatial audio production.',
-      category: 'spatial-audio',
-      type: 'document',
-      difficulty: 'advanced',
-      duration: 90,
-      views: 542,
-      rating: { average: 4.9, count: 45 },
-      author: { name: 'Dr. Sarah Wanjiru', university: 'Moi University' },
-      thumbnailUrl: '',
-    },
-    {
-      _id: '10',
-      title: 'Policy Framework for Music Ed Technology',
-      description: 'Understanding and implementing educational technology policies in Kenyan universities.',
-      category: 'policy',
-      type: 'document',
+      _id: 'hs-choral-theory',
+      title: 'High School Choral Resources: Music Theory',
+      description: 'Theory resources and classroom materials tailored for high school choral programs.',
+      category: 'music-theory',
+      type: 'collection',
       difficulty: 'intermediate',
       duration: 30,
-      views: 678,
-      rating: { average: 4.3, count: 34 },
-      author: { name: 'Prof. David Omondi', university: 'Egerton University' },
+      author: { name: 'High School Choral Resources', university: 'highschoolchoralresources.com' },
       thumbnailUrl: '',
+      content: `# High School Choral Resources: Music Theory
+
+## Topics covered
+- Notation, rhythm, and meter review
+- Intervals, scales, and key signatures
+- Triads, seventh chords, and inversions
+- Sight-singing and ear training prompts
+- Theory vocabulary for rehearsal language
+
+## Classroom ideas
+Use short mini-lessons or warm-ups to reinforce theory concepts in rehearsal.
+`,
     },
     {
-      _id: '11',
-      title: 'Practical Spatial Audio Setup Guide',
-      description: 'Step-by-step guide to setting up spatial audio equipment in your classroom or studio.',
-      category: 'practical',
-      type: 'interactive',
+      _id: 'musictheory-lessons',
+      title: 'MusicTheory.net Free Lessons',
+      description: 'Complete sequence of free, interactive lessons covering notation, rhythm, scales, chords, and harmony.',
+      category: 'music-theory',
+      type: 'lesson',
       difficulty: 'beginner',
-      duration: 40,
-      views: 1567,
-      rating: { average: 4.6, count: 112 },
-      author: { name: 'Dr. Mary Achieng', university: 'Maseno University' },
+      duration: 60,
+      author: { name: 'MusicTheory.net', university: 'musictheory.net' },
       thumbnailUrl: '',
-    },
-    {
-      _id: '12',
-      title: 'Music Technology Integration Assessment',
-      description: 'Comprehensive assessment tools for evaluating student understanding of music technology.',
-      category: 'technology',
-      type: 'assessment',
-      difficulty: 'intermediate',
-      duration: 50,
-      views: 934,
-      rating: { average: 4.4, count: 71 },
-      author: { name: 'Dr. Peter Ngugi', university: 'Technical University of Kenya' },
-      thumbnailUrl: '',
+      content: `# MusicTheory.net Free Lessons (Curated Path)
+
+## Lesson sequence
+1. Notation and rhythm foundations
+2. Scales, intervals, and key signatures
+3. Triads, seventh chords, and harmonic function
+4. Cadences and chord progressions
+5. Ear training connections
+
+## Teaching tip
+Assign one lesson per week and follow with a quick in-class application (singing, clapping, or analysis).
+`,
     },
   ];
 
   useEffect(() => {
-    // Simulate API call
-    setTimeout(() => {
-      setResources(mockResources);
-      setLoading(false);
-    }, 500);
+    let isMounted = true;
+
+    const fetchResources = async () => {
+      try {
+        const response = await resourcesAPI.getAll({ limit: 200 });
+        const payload = response?.data || {};
+        const data = payload.data || payload.resources || payload.data?.resources || [];
+
+        if (isMounted) {
+          setResources(data);
+        }
+      } catch (error) {
+        console.error('Failed to fetch resources:', error);
+        if (isMounted) {
+          setResources(fallbackResources);
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchResources();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const filteredResources = resources.filter((resource) => {
-    const matchesSearch = resource.title.toLowerCase().includes(search.toLowerCase()) ||
-                         resource.description.toLowerCase().includes(search.toLowerCase());
+    const matchesSearch =
+      resource.title?.toLowerCase().includes(search.toLowerCase()) ||
+      resource.description?.toLowerCase().includes(search.toLowerCase());
+
     const matchesCategory = selectedCategory === 'all' || resource.category === selectedCategory;
     const matchesDifficulty = selectedDifficulty === 'all' || resource.difficulty === selectedDifficulty;
     
@@ -196,10 +163,10 @@ const Resources = () => {
       {/* Header */}
       <div className="mb-12 text-center">
         <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
-          Resource Library
+          Choral Education Resources
         </h1>
         <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-          Curated music education materials for spatial audio training
+          Curated collections and free lessons for K-12 choral educators and music theory instruction.
         </p>
       </div>
 
@@ -272,7 +239,7 @@ const Resources = () => {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredResources.map((resource) => (
-            <ResourceCard key={resource._id} resource={resource} />
+            <ResourceCard key={resource.id || resource._id} resource={resource} />
           ))}
         </div>
       )}

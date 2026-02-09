@@ -14,7 +14,8 @@ const register = async (req, res) => {
     }
 
     // Check if user already exists
-    const userExists = await User.findOne({ email });
+    const userExists = await User.findOne({ where: { email } });
+
     if (userExists) {
       return errorResponse(res, 400, 'User already exists with this email');
     }
@@ -31,14 +32,14 @@ const register = async (req, res) => {
     });
 
     // Generate token
-    const token = generateToken(user._id);
+    const token = generateToken(user.id);
 
     res.status(201).json({
       success: true,
       message: 'User registered successfully',
       data: {
         user: {
-          id: user._id,
+          id: user.id,
           name: user.name,
           email: user.email,
           role: user.role,
@@ -66,8 +67,10 @@ const login = async (req, res) => {
       return errorResponse(res, 400, 'Please provide email and password');
     }
 
-    // Find user and include password
-    const user = await User.findOne({ email }).select('+password');
+    const normalizedEmail = String(email).toLowerCase().trim();
+
+    // Find user
+    const user = await User.findOne({ where: { email: normalizedEmail } });
 
     if (!user) {
       return errorResponse(res, 401, 'Invalid credentials');
@@ -90,14 +93,14 @@ const login = async (req, res) => {
     await user.save();
 
     // Generate token
-    const token = generateToken(user._id);
+    const token = generateToken(user.id);
 
     res.json({
       success: true,
       message: 'Login successful',
       data: {
         user: {
-          id: user._id,
+          id: user.id,
           name: user.name,
           email: user.email,
           role: user.role,
@@ -119,8 +122,7 @@ const login = async (req, res) => {
 // @access  Private
 const getMe = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id)
-      .populate('completedModules', 'title category difficulty');
+    const user = await User.findByPk(req.user.id);
 
     successResponse(res, 200, 'User profile retrieved', { user });
   } catch (error) {
@@ -136,7 +138,7 @@ const updateProfile = async (req, res) => {
   try {
     const { name, university, department, specialization, bio, avatar } = req.body;
 
-    const user = await User.findById(req.user.id);
+    const user = await User.findByPk(req.user.id);
 
     if (!user) {
       return errorResponse(res, 404, 'User not found');
@@ -174,7 +176,7 @@ const changePassword = async (req, res) => {
       return errorResponse(res, 400, 'New password must be at least 6 characters');
     }
 
-    const user = await User.findById(req.user.id).select('+password');
+    const user = await User.findByPk(req.user.id);
 
     // Verify current password
     const isPasswordValid = await user.comparePassword(currentPassword);

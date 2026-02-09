@@ -2,6 +2,7 @@ const { Sequelize } = require('sequelize');
 
 // Create Sequelize instance with better error handling
 let sequelize;
+const enableDbLogging = process.env.DB_LOGGING === 'true';
 
 if (process.env.DATABASE_URL) {
   // Production: Use DATABASE_URL from Render PostgreSQL
@@ -9,7 +10,8 @@ if (process.env.DATABASE_URL) {
   sequelize = new Sequelize(process.env.DATABASE_URL, {
     dialect: 'postgres',
     protocol: 'postgres',
-    logging: false,
+    logging: enableDbLogging ? console.log : false,
+
     dialectOptions: {
       ssl: false
     },
@@ -36,7 +38,8 @@ if (process.env.DATABASE_URL) {
       host: process.env.DB_HOST || 'localhost',
       port: process.env.DB_PORT || 5432,
       dialect: 'postgres',
-      logging: process.env.NODE_ENV === 'development' ? console.log : false,
+      logging: enableDbLogging ? console.log : false,
+
       pool: {
         max: 5,
         min: 0,

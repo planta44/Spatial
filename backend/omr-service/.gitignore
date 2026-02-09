@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# Directories with processed files
+uploads/
+processed/
+output/
+*.png
+*.jpg
+*.jpeg
+*.tiff
+*.bmp
+*.musicxml
+*.mxl
+*.xml
+*.mid
+*.midi
+*.pdf
+
+# Keep directory structure but ignore contents
+!uploads/.gitkeep
+!processed/.gitkeep
+!output/.gitkeep
+
+# Environment
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
