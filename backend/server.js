@@ -19,6 +19,13 @@ const transcriptionRoutes = require('./routes/transcription');
 
 const app = express();
 
+const getApiBaseUrl = (port) => {
+  if (process.env.PUBLIC_API_URL) return process.env.PUBLIC_API_URL;
+  if (process.env.RENDER_EXTERNAL_URL) return process.env.RENDER_EXTERNAL_URL;
+  if (process.env.RENDER_SERVICE_URL) return process.env.RENDER_SERVICE_URL;
+  return `http://localhost:${port}`;
+};
+
 const ensureAdminUser = async () => {
   const shouldSeed = process.env.SEED_ADMIN !== 'false';
   if (!shouldSeed) return;
@@ -168,6 +175,6 @@ const PORT = process.env.PORT || 5001;
 app.listen(PORT, () => {
   console.log(`\n🚀 Spatial AI API Server running on port ${PORT}`);
   console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🔗 API URL: http://localhost:${PORT}`);
+  console.log(`🔗 API URL: ${getApiBaseUrl(PORT)}`);
   console.log(`\n✅ Server started successfully!\n`);
 });

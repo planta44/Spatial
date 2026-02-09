@@ -3,6 +3,10 @@ const { Sequelize } = require('sequelize');
 // Create Sequelize instance with better error handling
 let sequelize;
 const enableDbLogging = process.env.DB_LOGGING === 'true';
+const sslEnabled =
+  process.env.DB_SSL === 'true' ||
+  process.env.DATABASE_SSL === 'true' ||
+  /sslmode=require/i.test(process.env.DATABASE_URL || '');
 
 if (process.env.DATABASE_URL) {
   // Production: Use DATABASE_URL from Render PostgreSQL
@@ -13,7 +17,7 @@ if (process.env.DATABASE_URL) {
     logging: enableDbLogging ? console.log : false,
 
     dialectOptions: {
-      ssl: false
+      ssl: sslEnabled ? { require: true, rejectUnauthorized: false } : false
     },
     pool: {
       max: 5,
@@ -66,7 +70,10 @@ const connectDB = async () => {
     console.log(`📊 Database: ${process.env.DATABASE_URL ? process.env.DATABASE_URL.split('/').pop().split('?')[0] : process.env.DB_NAME || 'spatial_ai'}`);
     
     // Sync all models
-    if (process.env.NODE_ENV === 'development') {
+    if (process.env.NODE_ENV === 'development' || process.env.DB_SYNC === 'true') {
+      if (process.env.DB_SYNC === 'true') {
+        console.log('🧱 DB_SYNC enabled: syncing models in production');
+      }
       await sequelize.sync({ alter: true });
       console.log('📋 Database models synchronized');
     }
