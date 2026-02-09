@@ -4,6 +4,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { getPagination, formatPaginationResponse, errorResponse, successResponse } = require('../utils/helpers');
+const { cloudinaryEnabled, uploadBuffer } = require('../utils/cloudinary');
 
 const ensureUploadDir = (dirPath) => {
   if (!fs.existsSync(dirPath)) {
@@ -21,17 +22,19 @@ const getResourceUploadDestination = (file) => {
   return path.join('uploads', 'resources', 'files');
 };
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const dest = getResourceUploadDestination(file);
-    ensureUploadDir(dest);
-    cb(null, dest);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    cb(null, `${file.fieldname}-${uniqueSuffix}${path.extname(file.originalname)}`);
-  }
-});
+const storage = cloudinaryEnabled
+  ? multer.memoryStorage()
+  : multer.diskStorage({
+      destination: (req, file, cb) => {
+        const dest = getResourceUploadDestination(file);
+        ensureUploadDir(dest);
+        cb(null, dest);
+      },
+      filename: (req, file, cb) => {
+        const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+        cb(null, `${file.fieldname}-${uniqueSuffix}${path.extname(file.originalname)}`);
+      }
+    });
 
 const upload = multer({
   storage,
@@ -46,6 +49,23 @@ const upload = multer({
     }
   }
 });
+
+const getCloudinaryFolder = (file) => {
+  if (file.mimetype.startsWith('image/')) {
+    return 'spatial-ai/resources/images';
+  }
+  if (file.mimetype === 'application/pdf') {
+    return 'spatial-ai/resources/pdfs';
+  }
+  return 'spatial-ai/resources/files';
+};
+
+const getCloudinaryResourceType = (file) => {
+  if (file.mimetype.startsWith('image/')) {
+    return 'image';
+  }
+  return 'raw';
+};
 
 // @desc    Get all resources
 // @route   GET /api/resources
@@ -284,9 +304,32 @@ const getResourcesAdmin = async (req, res) => {
 // @access  Private (Teacher/Admin)
 const uploadResourceAsset = [
   upload.single('file'),
-  (req, res) => {
+  async (req, res) => {
     if (!req.file) {
       return errorResponse(res, 400, 'No file uploaded');
+    }
+
+    if (cloudinaryEnabled) {
+      try {
+        const result = await uploadBuffer({
+          buffer: req.file.buffer,
+          folder: getCloudinaryFolder(req.file),
+          resourceType: getCloudinaryResourceType(req.file),
+          originalFilename: req.file.originalname
+        });
+
+        return successResponse(res, 201, 'File uploaded successfully', {
+          url: result.secure_url,
+          fileName: req.file.originalname,
+          mimeType: req.file.mimetype,
+          size: req.file.size,
+          provider: 'cloudinary',
+          publicId: result.public_id
+        });
+      } catch (error) {
+        console.error('Cloudinary upload error:', error);
+        return errorResponse(res, 500, 'Cloud upload failed');
+      }
     }
 
     const normalizedPath = req.file.path.replace(/\\/g, '/');
@@ -296,7 +339,8 @@ const uploadResourceAsset = [
       url: fileUrl,
       fileName: req.file.originalname,
       mimeType: req.file.mimetype,
-      size: req.file.size
+      size: req.file.size,
+      provider: 'local'
     });
   }
 ];
