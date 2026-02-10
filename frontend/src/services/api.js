@@ -83,6 +83,13 @@ export const pageContentsAPI = {
   upsert: (slug, data) => api.put(`/page-contents/${slug}`, data),
 };
 
+export const courseEnrollmentsAPI = {
+  getMine: () => api.get('/course-enrollments/me'),
+  enroll: (courseId) => api.post('/course-enrollments', { courseId }),
+  update: (courseId, data) => api.put(`/course-enrollments/${courseId}`, data),
+  unenroll: (courseId) => api.delete(`/course-enrollments/${courseId}`),
+};
+
 // Spatial audio endpoints
 export const spatialAPI = {
   getAll: (params) => api.get('/spatial', { params }),

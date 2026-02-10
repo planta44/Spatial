@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   BookOpen,
   Award,
@@ -15,7 +16,9 @@ import { pageContentsAPI } from '../services/api';
 import { PAGE_CONTENT_SLUGS, getDefaultPageContent } from '../utils/pageContentDefaults';
 
 const TeacherTraining = () => {
-  const [activeSection, setActiveSection] = useState('overview');
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [activeSection, setActiveSection] = useState(() => location.state?.section || 'overview');
   const [enrolledCourses, setEnrolledCourses] = useState([]);
   const [completedCourses, setCompletedCourses] = useState([]);
   const [certificates, setCertificates] = useState([]);
@@ -65,6 +68,13 @@ const TeacherTraining = () => {
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    const targetSection = location.state?.section;
+    if (targetSection) {
+      setActiveSection(targetSection);
+    }
+  }, [location.state]);
 
   const availableCourses = Array.isArray(courseContent?.courses) ? courseContent.courses : [];
   const overviewStats = Array.isArray(overviewContent?.stats) ? overviewContent.stats : [];
@@ -209,6 +219,11 @@ const TeacherTraining = () => {
       
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {availableCourses.map((course) => {
+          const courseId =
+            course.id ||
+            course.slug ||
+            course.title?.toLowerCase().replace(/\s+/g, '-') ||
+            '';
           const modules = Array.isArray(course.modules) ? course.modules : [];
           const prerequisites = Array.isArray(course.prerequisites) ? course.prerequisites : [];
 
@@ -276,10 +291,18 @@ const TeacherTraining = () => {
               )}
 
               <div className="flex gap-2">
-                <button className="flex-1 bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600">
+                <button
+                  type="button"
+                  onClick={() => navigate(`/courses/${courseId}`)}
+                  className="flex-1 bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600"
+                >
                   Enroll Now
                 </button>
-                <button className="px-4 py-2 border border-gray-300 rounded hover:bg-gray-50">
+                <button
+                  type="button"
+                  onClick={() => navigate(`/courses/${courseId}?preview=true`)}
+                  className="px-4 py-2 border border-gray-300 rounded hover:bg-gray-50"
+                >
                   Preview
                 </button>
               </div>

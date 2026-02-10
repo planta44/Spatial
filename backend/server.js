@@ -17,6 +17,7 @@ const compositionRoutes = require('./routes/compositions');
 const spatialProjectRoutes = require('./routes/spatialProjects');
 const curriculumRoutes = require('./routes/curriculum');
 const transcriptionRoutes = require('./routes/transcription');
+const courseEnrollmentRoutes = require('./routes/courseEnrollments');
 
 const app = express();
 
@@ -123,6 +124,7 @@ app.use('/api/compositions', compositionRoutes);
 app.use('/api/spatial-projects', spatialProjectRoutes);
 app.use('/api/curriculum', curriculumRoutes);
 app.use('/api/transcription', transcriptionRoutes);
+app.use('/api/course-enrollments', courseEnrollmentRoutes);
 
 console.log('✅ All routes registered including /api/transcription');
 

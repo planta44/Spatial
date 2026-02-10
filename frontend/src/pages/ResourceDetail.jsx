@@ -8,6 +8,14 @@ const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5001/api
 const resolveAssetUrl = (url) => {
   if (!url) return '';
   if (url.startsWith('http://') || url.startsWith('https://')) {
+    try {
+      const parsed = new URL(url);
+      if (['localhost', '127.0.0.1'].includes(parsed.hostname)) {
+        return `${API_BASE_URL}${parsed.pathname}${parsed.search}${parsed.hash}`;
+      }
+    } catch (error) {
+      return url;
+    }
     return url;
   }
   const normalized = url.startsWith('/') ? url : `/${url}`;
@@ -25,12 +33,6 @@ const getVideoEmbedUrl = (url) => {
     return `https://player.vimeo.com/video/${vimeoMatch[1]}`;
   }
   return '';
-};
-
-const getPdfEmbedUrl = (url) => {
-  if (!url) return '';
-  const params = 'view=FitH&toolbar=0&navpanes=0&scrollbar=1';
-  return url.includes('#') ? `${url}&${params}` : `${url}#${params}`;
 };
 
 const isVideoFile = (url) => /\.(mp4|webm|ogg)$/i.test(url || '');
@@ -239,7 +241,7 @@ const ResourceDetail = () => {
                 }
                 if (block.type === 'pdf') {
                   const pdfUrl = resolveAssetUrl(block.url);
-                  const embedUrl = getPdfEmbedUrl(pdfUrl);
+                  const thumbnailUrl = resolveAssetUrl(block.thumbnailUrl);
                   return (
                     <div key={key} className="space-y-3">
                       <div className="flex items-center justify-between gap-3 bg-gray-50 border border-gray-200 rounded-lg p-3">
@@ -255,15 +257,12 @@ const ResourceDetail = () => {
                           </a>
                         )}
                       </div>
-                      {pdfUrl && (
-                        <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
-                          <iframe
-                            src={embedUrl}
-                            title={block.caption || 'PDF preview'}
-                            className="w-full min-h-[640px] bg-white"
-                            loading="lazy"
-                          />
-                        </div>
+                      {thumbnailUrl && (
+                        <img
+                          src={thumbnailUrl}
+                          alt={block.caption || 'PDF thumbnail'}
+                          className="w-full rounded-lg border border-gray-200"
+                        />
                       )}
                     </div>
                   );

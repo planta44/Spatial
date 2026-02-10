@@ -10,6 +10,7 @@ DROP TABLE IF EXISTS user_certifications CASCADE;
 DROP TABLE IF EXISTS certifications CASCADE;
 DROP TABLE IF EXISTS spatial_projects CASCADE;
 DROP TABLE IF EXISTS compositions CASCADE;
+DROP TABLE IF EXISTS course_enrollments CASCADE;
 DROP TABLE IF EXISTS courses CASCADE;
 DROP TABLE IF EXISTS region_analytics CASCADE;
 DROP TABLE IF EXISTS artists CASCADE;
@@ -71,6 +72,20 @@ CREATE TABLE universities (
     registration_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Course Enrollments table
+CREATE TABLE course_enrollments (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id),
+    course_id VARCHAR(255) NOT NULL,
+    status VARCHAR(50) DEFAULT 'enrolled',
+    progress INTEGER DEFAULT 0,
+    last_accessed_at TIMESTAMP,
+    completed_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (user_id, course_id)
 );
 
 -- Users table

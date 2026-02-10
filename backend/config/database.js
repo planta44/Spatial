@@ -65,10 +65,12 @@ if (process.env.DATABASE_URL) {
 const ensureCoreSchema = async () => {
   const Resource = require('../models/Resource');
   const PageContent = require('../models/PageContent');
+  const CourseEnrollment = require('../models/CourseEnrollment');
 
   try {
     await Resource.sync();
     await PageContent.sync();
+    await CourseEnrollment.sync();
   } catch (error) {
     console.warn('⚠️  Core table sync skipped:', error.message);
   }

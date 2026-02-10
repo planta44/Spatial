@@ -12,6 +12,7 @@ import AdminPageContent from './pages/AdminPageContent';
 import TeacherTraining from './pages/TeacherTraining';
 import StudentPractice from './pages/StudentPractice';
 import ResourceDetail from './pages/ResourceDetail';
+import CourseDetail from './pages/CourseDetail';
 
 function App() {
   return (
@@ -26,6 +27,7 @@ function App() {
           <Route path="/policies" element={<Policies />} />
           <Route path="/resources" element={<Resources />} />
           <Route path="/resources/:id" element={<ResourceDetail />} />
+          <Route path="/courses/:id" element={<CourseDetail />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="/admin/resources" element={<AdminResources />} />
           <Route path="/admin/pages" element={<AdminPageContent />} />
