@@ -79,8 +79,8 @@ const Admin = () => {
             <div className="bg-primary-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
               <Lock className="h-8 w-8 text-primary-600" />
             </div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Admin Portal</h1>
-            <p className="text-gray-600">Sign in to access the admin dashboard</p>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Spatial AI Portal</h1>
+            <p className="text-gray-600">Sign in to access your dashboard</p>
           </div>
 
           {/* Login Form */}
@@ -145,8 +145,8 @@ const Admin = () => {
 
           {/* Demo Credentials */}
           <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-            <p className="text-sm text-gray-600 mb-2 font-medium">Admin Access</p>
-            <p className="text-sm text-gray-500">Use your admin account credentials to continue.</p>
+            <p className="text-sm text-gray-600 mb-2 font-medium">Portal Access</p>
+            <p className="text-sm text-gray-500">Use your account credentials to continue.</p>
           </div>
         </div>
 

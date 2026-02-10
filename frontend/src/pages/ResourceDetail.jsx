@@ -43,6 +43,10 @@ const ResourceDetail = () => {
   const [error, setError] = useState('');
 
   useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+  }, [id]);
+
+  useEffect(() => {
     const fetchResource = async () => {
       try {
         setLoading(true);

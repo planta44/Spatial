@@ -4,6 +4,11 @@ const { Pool } = require('pg');
 require('dotenv').config();
 
 async function setupDatabase() {
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_DB_RESET !== 'true') {
+    console.error('❌ Refusing to reset database in production without ALLOW_DB_RESET=true');
+    process.exit(1);
+  }
+
   const pool = new Pool({
     host: process.env.DB_HOST || 'localhost',
     port: process.env.DB_PORT || 5432,

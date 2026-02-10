@@ -62,6 +62,79 @@ if (process.env.DATABASE_URL) {
   );
 }
 
+const ensureCoreSchema = async () => {
+  const Resource = require('../models/Resource');
+  const PageContent = require('../models/PageContent');
+
+  try {
+    await Resource.sync();
+    await PageContent.sync();
+  } catch (error) {
+    console.warn('⚠️  Core table sync skipped:', error.message);
+  }
+
+  const resourceAlterations = [
+    "ALTER TABLE resources ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0",
+    "ALTER TABLE resources ADD COLUMN IF NOT EXISTS content_blocks JSONB DEFAULT '[]'::jsonb",
+    'ALTER TABLE resources ADD COLUMN IF NOT EXISTS author_name VARCHAR(255)',
+    "ALTER TABLE resources ADD COLUMN IF NOT EXISTS thumbnail_url VARCHAR(500) DEFAULT ''",
+    'ALTER TABLE resources ADD COLUMN IF NOT EXISTS author_id UUID',
+    'ALTER TABLE resources ADD COLUMN IF NOT EXISTS university VARCHAR(255)',
+    "ALTER TABLE resources ADD COLUMN IF NOT EXISTS learning_outcomes TEXT[] DEFAULT '{}'::text[]",
+    "ALTER TABLE resources ADD COLUMN IF NOT EXISTS spatial_audio_config JSONB DEFAULT '{" +
+      "\"enabled\": false, \"format\": null, \"channels\": null}'::jsonb",
+    'ALTER TABLE resources ADD COLUMN IF NOT EXISTS views INTEGER DEFAULT 0',
+    'ALTER TABLE resources ADD COLUMN IF NOT EXISTS is_published BOOLEAN DEFAULT false',
+    'ALTER TABLE resources ADD COLUMN IF NOT EXISTS published_date TIMESTAMP'
+  ];
+
+  for (const statement of resourceAlterations) {
+    try {
+      await sequelize.query(statement);
+    } catch (error) {
+      console.warn('⚠️  Resource schema update skipped:', error.message);
+    }
+  }
+
+  const resourceBackfills = [
+    'UPDATE resources SET sort_order = 0 WHERE sort_order IS NULL',
+    'UPDATE resources SET is_published = is_public WHERE is_published IS NULL',
+    'UPDATE resources SET author_id = created_by WHERE author_id IS NULL AND created_by IS NOT NULL'
+  ];
+
+  for (const statement of resourceBackfills) {
+    try {
+      await sequelize.query(statement);
+    } catch (error) {
+      console.warn('⚠️  Resource backfill skipped:', error.message);
+    }
+  }
+
+  const pageContentAlterations = [
+    'ALTER TABLE page_contents ADD COLUMN IF NOT EXISTS slug VARCHAR(255)',
+    'ALTER TABLE page_contents ADD COLUMN IF NOT EXISTS title VARCHAR(255)',
+    "ALTER TABLE page_contents ADD COLUMN IF NOT EXISTS content JSONB DEFAULT '{}'::jsonb",
+    'ALTER TABLE page_contents ADD COLUMN IF NOT EXISTS created_by UUID',
+    'ALTER TABLE page_contents ADD COLUMN IF NOT EXISTS updated_by UUID',
+    'ALTER TABLE page_contents ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
+    'ALTER TABLE page_contents ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP'
+  ];
+
+  for (const statement of pageContentAlterations) {
+    try {
+      await sequelize.query(statement);
+    } catch (error) {
+      console.warn('⚠️  Page content schema update skipped:', error.message);
+    }
+  }
+
+  try {
+    await sequelize.query('CREATE UNIQUE INDEX IF NOT EXISTS page_contents_slug_idx ON page_contents (slug)');
+  } catch (error) {
+    console.warn('⚠️  Page contents index update skipped:', error.message);
+  }
+};
+
 const connectDB = async () => {
   try {
     console.log('🔍 Attempting database connection...');
@@ -81,6 +154,8 @@ const connectDB = async () => {
       }
     }
     
+    await ensureCoreSchema();
+
     // Sync all models
     if (process.env.NODE_ENV === 'development' || process.env.DB_SYNC === 'true') {
       if (process.env.DB_SYNC === 'true') {
