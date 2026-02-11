@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowDown, ArrowLeft, ArrowUp, Plus, Save, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowUp, Plus, Save, Trash2, Upload } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { pageContentsAPI } from '../services/api';
+import { pageContentsAPI, resourcesAPI } from '../services/api';
 import { PAGE_CONTENT_OPTIONS, PAGE_CONTENT_SLUGS, getDefaultPageContent } from '../utils/pageContentDefaults';
 
 const AdminPageContent = () => {
@@ -13,6 +13,7 @@ const AdminPageContent = () => {
   );
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   const isAdmin = useMemo(() => {
     try {
@@ -158,7 +159,9 @@ const AdminPageContent = () => {
       const list = [...(prev[listKey] || [])];
       const current = list[index] || {};
       const nested = [...(current[nestedKey] || [])];
-      nested[nestedIndex] = { ...(nested[nestedIndex] || {}), [field]: value };
+      const existing = nested[nestedIndex];
+      const base = existing && typeof existing === 'object' ? existing : { title: existing || '' };
+      nested[nestedIndex] = { ...base, [field]: value };
       list[index] = { ...current, [nestedKey]: nested };
       return { ...prev, [listKey]: list };
     });
@@ -193,6 +196,374 @@ const AdminPageContent = () => {
       .filter(Boolean);
 
   const formatCsv = (value) => (Array.isArray(value) ? value.join(', ') : '');
+
+  const slugify = (value) =>
+    String(value || '')
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-');
+
+  const createEmptyBlock = (type) => ({
+    id: `${type}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    type,
+    text: '',
+    url: '',
+    thumbnailUrl: '',
+    caption: '',
+    items: [],
+  });
+
+  const createResourceItem = () => ({
+    id: `resource-${Date.now()}`,
+    title: '',
+    slug: '',
+    subtitle: '',
+    summary: '',
+    type: '',
+    duration: '',
+    tags: [],
+    thumbnailUrl: '',
+    downloadUrl: '',
+    externalUrl: '',
+    content: '',
+    contentBlocks: [],
+  });
+
+  const createModuleResource = () => ({
+    id: `module-resource-${Date.now()}`,
+    title: '',
+    description: '',
+    url: '',
+    type: '',
+  });
+
+  const createQuizOption = () => ({
+    id: `option-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    text: '',
+    isCorrect: false,
+  });
+
+  const createQuizQuestion = () => ({
+    id: `question-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    text: '',
+    allowMultiple: false,
+    options: [createQuizOption(), createQuizOption()],
+  });
+
+  const normalizeModuleQuiz = (quiz) => ({
+    enabled: Boolean(quiz?.enabled),
+    timeLimitMinutes: quiz?.timeLimitMinutes ?? '',
+    passingScore: quiz?.passingScore ?? 70,
+    questions: Array.isArray(quiz?.questions) ? quiz.questions : [],
+  });
+
+  const normalizeResourceItem = (item) => {
+    if (item && typeof item === 'object') {
+      return {
+        ...createResourceItem(),
+        ...item,
+        tags: Array.isArray(item.tags) ? item.tags : [],
+        contentBlocks: Array.isArray(item.contentBlocks) ? item.contentBlocks : [],
+      };
+    }
+    const title = item || '';
+    return {
+      ...createResourceItem(),
+      title,
+      slug: slugify(title),
+    };
+  };
+
+  const updateResourceItem = (categoryIndex, itemIndex, updater) => {
+    setContent((prev) => {
+      const categories = [...(prev.categories || [])];
+      const category = { ...(categories[categoryIndex] || {}) };
+      const items = [...(category.items || [])];
+      const current = normalizeResourceItem(items[itemIndex]);
+      items[itemIndex] = updater(current);
+      category.items = items;
+      categories[categoryIndex] = category;
+      return { ...prev, categories };
+    });
+  };
+
+  const updateResourceBlockField = (categoryIndex, itemIndex, blockIndex, field, value) => {
+    updateResourceItem(categoryIndex, itemIndex, (current) => {
+      const blocks = [...(current.contentBlocks || [])];
+      blocks[blockIndex] = { ...blocks[blockIndex], [field]: value };
+      return { ...current, contentBlocks: blocks };
+    });
+  };
+
+  const moveResourceBlock = (categoryIndex, itemIndex, fromIndex, toIndex) => {
+    updateResourceItem(categoryIndex, itemIndex, (current) => {
+      const blocks = [...(current.contentBlocks || [])];
+      if (toIndex < 0 || toIndex >= blocks.length) {
+        return current;
+      }
+      const [moved] = blocks.splice(fromIndex, 1);
+      blocks.splice(toIndex, 0, moved);
+      return { ...current, contentBlocks: blocks };
+    });
+  };
+
+  const addResourceBlock = (categoryIndex, itemIndex, type) => {
+    updateResourceItem(categoryIndex, itemIndex, (current) => ({
+      ...current,
+      contentBlocks: [...(current.contentBlocks || []), createEmptyBlock(type)],
+    }));
+  };
+
+  const removeResourceBlock = (categoryIndex, itemIndex, blockIndex) => {
+    updateResourceItem(categoryIndex, itemIndex, (current) => {
+      const blocks = [...(current.contentBlocks || [])];
+      blocks.splice(blockIndex, 1);
+      return { ...current, contentBlocks: blocks };
+    });
+  };
+
+  const handleResourceItemUpload = async (categoryIndex, itemIndex, field, file) => {
+    if (!file) return;
+    try {
+      setUploading(true);
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await resourcesAPI.uploadAsset(formData);
+      const payload = response?.data || {};
+      const url = payload.url || payload.data?.url || '';
+      if (!url) {
+        throw new Error('Upload failed');
+      }
+      updateNestedObjectField('categories', categoryIndex, 'items', itemIndex, field, url);
+      toast.success('File uploaded');
+    } catch (error) {
+      console.error('Upload failed:', error);
+      toast.error('Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const updateModule = (courseIndex, moduleIndex, updater) => {
+    setContent((prev) => {
+      const courses = [...(prev.courses || [])];
+      const course = { ...(courses[courseIndex] || {}) };
+      const modules = [...(course.modules || [])];
+      const current = modules[moduleIndex];
+      const base = current && typeof current === 'object' ? current : { title: current || '' };
+      modules[moduleIndex] = updater(base);
+      course.modules = modules;
+      courses[courseIndex] = course;
+      return { ...prev, courses };
+    });
+  };
+
+  const updateModuleField = (courseIndex, moduleIndex, field, value) =>
+    updateModule(courseIndex, moduleIndex, (current) => ({ ...current, [field]: value }));
+
+  const addModuleContentBlock = (courseIndex, moduleIndex, type) =>
+    updateModule(courseIndex, moduleIndex, (current) => ({
+      ...current,
+      contentBlocks: [...(current.contentBlocks || []), createEmptyBlock(type)],
+    }));
+
+  const updateModuleContentBlockField = (courseIndex, moduleIndex, blockIndex, field, value) =>
+    updateModule(courseIndex, moduleIndex, (current) => {
+      const blocks = [...(current.contentBlocks || [])];
+      blocks[blockIndex] = { ...blocks[blockIndex], [field]: value };
+      return { ...current, contentBlocks: blocks };
+    });
+
+  const moveModuleContentBlock = (courseIndex, moduleIndex, fromIndex, toIndex) =>
+    updateModule(courseIndex, moduleIndex, (current) => {
+      const blocks = [...(current.contentBlocks || [])];
+      if (toIndex < 0 || toIndex >= blocks.length) {
+        return current;
+      }
+      const [moved] = blocks.splice(fromIndex, 1);
+      blocks.splice(toIndex, 0, moved);
+      return { ...current, contentBlocks: blocks };
+    });
+
+  const removeModuleContentBlock = (courseIndex, moduleIndex, blockIndex) =>
+    updateModule(courseIndex, moduleIndex, (current) => {
+      const blocks = [...(current.contentBlocks || [])];
+      blocks.splice(blockIndex, 1);
+      return { ...current, contentBlocks: blocks };
+    });
+
+  const addModuleResource = (courseIndex, moduleIndex) =>
+    updateModule(courseIndex, moduleIndex, (current) => ({
+      ...current,
+      resources: [...(current.resources || []), createModuleResource()],
+    }));
+
+  const updateModuleResourceField = (courseIndex, moduleIndex, resourceIndex, field, value) =>
+    updateModule(courseIndex, moduleIndex, (current) => {
+      const resources = [...(current.resources || [])];
+      const existing = resources[resourceIndex] || {};
+      resources[resourceIndex] = { ...existing, [field]: value };
+      return { ...current, resources };
+    });
+
+  const removeModuleResource = (courseIndex, moduleIndex, resourceIndex) =>
+    updateModule(courseIndex, moduleIndex, (current) => {
+      const resources = [...(current.resources || [])];
+      resources.splice(resourceIndex, 1);
+      return { ...current, resources };
+    });
+
+  const updateModuleQuizField = (courseIndex, moduleIndex, field, value) =>
+    updateModule(courseIndex, moduleIndex, (current) => {
+      const quiz = normalizeModuleQuiz(current.quiz);
+      return { ...current, quiz: { ...quiz, [field]: value } };
+    });
+
+  const addModuleQuizQuestion = (courseIndex, moduleIndex) =>
+    updateModule(courseIndex, moduleIndex, (current) => {
+      const quiz = normalizeModuleQuiz(current.quiz);
+      const questions = [...(quiz.questions || []), createQuizQuestion()];
+      return { ...current, quiz: { ...quiz, questions } };
+    });
+
+  const removeModuleQuizQuestion = (courseIndex, moduleIndex, questionIndex) =>
+    updateModule(courseIndex, moduleIndex, (current) => {
+      const quiz = normalizeModuleQuiz(current.quiz);
+      const questions = [...(quiz.questions || [])];
+      questions.splice(questionIndex, 1);
+      return { ...current, quiz: { ...quiz, questions } };
+    });
+
+  const updateModuleQuizQuestionField = (courseIndex, moduleIndex, questionIndex, field, value) =>
+    updateModule(courseIndex, moduleIndex, (current) => {
+      const quiz = normalizeModuleQuiz(current.quiz);
+      const questions = [...(quiz.questions || [])];
+      const existing = questions[questionIndex] || {};
+      const question = {
+        id: existing.id || `question-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        ...existing,
+        [field]: value,
+      };
+      questions[questionIndex] = question;
+      return { ...current, quiz: { ...quiz, questions } };
+    });
+
+  const addModuleQuizOption = (courseIndex, moduleIndex, questionIndex) =>
+    updateModule(courseIndex, moduleIndex, (current) => {
+      const quiz = normalizeModuleQuiz(current.quiz);
+      const questions = [...(quiz.questions || [])];
+      const existing = questions[questionIndex] || {};
+      const options = [...(existing.options || []), createQuizOption()];
+      questions[questionIndex] = {
+        id: existing.id || `question-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        ...existing,
+        options,
+      };
+      return { ...current, quiz: { ...quiz, questions } };
+    });
+
+  const removeModuleQuizOption = (courseIndex, moduleIndex, questionIndex, optionIndex) =>
+    updateModule(courseIndex, moduleIndex, (current) => {
+      const quiz = normalizeModuleQuiz(current.quiz);
+      const questions = [...(quiz.questions || [])];
+      const existing = questions[questionIndex] || {};
+      const options = [...(existing.options || [])];
+      options.splice(optionIndex, 1);
+      questions[questionIndex] = { ...existing, options };
+      return { ...current, quiz: { ...quiz, questions } };
+    });
+
+  const updateModuleQuizOptionField = (courseIndex, moduleIndex, questionIndex, optionIndex, field, value) =>
+    updateModule(courseIndex, moduleIndex, (current) => {
+      const quiz = normalizeModuleQuiz(current.quiz);
+      const questions = [...(quiz.questions || [])];
+      const existing = questions[questionIndex] || {};
+      const options = [...(existing.options || [])];
+      const currentOption = options[optionIndex] || {};
+      options[optionIndex] = {
+        id: currentOption.id || `option-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        ...currentOption,
+        [field]: value,
+      };
+      questions[questionIndex] = { ...existing, options };
+      return { ...current, quiz: { ...quiz, questions } };
+    });
+
+  const handleModuleResourceUpload = async (courseIndex, moduleIndex, resourceIndex, field, file) => {
+    if (!file) return;
+    try {
+      setUploading(true);
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await resourcesAPI.uploadAsset(formData);
+      const payload = response?.data || {};
+      const url = payload.url || payload.data?.url || '';
+      if (!url) {
+        throw new Error('Upload failed');
+      }
+      updateModuleResourceField(courseIndex, moduleIndex, resourceIndex, field, url);
+      toast.success('File uploaded');
+    } catch (error) {
+      console.error('Upload failed:', error);
+      toast.error('Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleModuleContentBlockUpload = async (courseIndex, moduleIndex, blockIndex, file, options = {}) => {
+    if (!file) return;
+    try {
+      const { urlField = 'url', captionField = 'caption', setCaption = true } = options;
+      setUploading(true);
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await resourcesAPI.uploadAsset(formData);
+      const payload = response?.data || {};
+      const url = payload.url || payload.data?.url || '';
+      if (!url) {
+        throw new Error('Upload failed');
+      }
+      updateModuleContentBlockField(courseIndex, moduleIndex, blockIndex, urlField, url);
+      if (setCaption) {
+        updateModuleContentBlockField(courseIndex, moduleIndex, blockIndex, captionField, file.name);
+      }
+      toast.success('File uploaded');
+    } catch (error) {
+      console.error('Upload failed:', error);
+      toast.error('Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleResourceBlockUpload = async (categoryIndex, itemIndex, blockIndex, file, options = {}) => {
+    if (!file) return;
+    try {
+      const { urlField = 'url', captionField = 'caption', setCaption = true } = options;
+      setUploading(true);
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await resourcesAPI.uploadAsset(formData);
+      const payload = response?.data || {};
+      const url = payload.url || payload.data?.url || '';
+      if (!url) {
+        throw new Error('Upload failed');
+      }
+      updateResourceBlockField(categoryIndex, itemIndex, blockIndex, urlField, url);
+      if (setCaption) {
+        updateResourceBlockField(categoryIndex, itemIndex, blockIndex, captionField, file.name);
+      }
+      toast.success('File uploaded');
+    } catch (error) {
+      console.error('Upload failed:', error);
+      toast.error('Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const stats = Array.isArray(content.stats) ? content.stats : [];
   const pathways = Array.isArray(content.pathways) ? content.pathways : [];
@@ -595,8 +966,18 @@ const AdminPageContent = () => {
                           addNestedObjectItem('courses', index, 'modules', {
                             id: `module-${Date.now()}`,
                             title: '',
+                            description: '',
                             duration: 30,
                             type: 'lesson',
+                            content: '',
+                            contentBlocks: [],
+                            resources: [],
+                            quiz: {
+                              enabled: false,
+                              timeLimitMinutes: '',
+                              passingScore: 70,
+                              questions: [],
+                            },
                           })
                         }
                         className="inline-flex items-center gap-2 text-xs text-blue-600 hover:text-blue-700"
@@ -608,66 +989,634 @@ const AdminPageContent = () => {
                     {modules.length === 0 ? (
                       <p className="text-xs text-gray-500">No modules added yet.</p>
                     ) : (
-                      <div className="space-y-3">
-                        {modules.map((module, moduleIndex) => (
-                          <div
-                            key={module.id || moduleIndex}
-                            className="border border-gray-200 rounded-lg p-3 space-y-2"
-                          >
-                            <div className="flex items-center justify-between">
-                              <p className="text-xs font-medium text-gray-600">Module {moduleIndex + 1}</p>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  removeNestedObjectItem('courses', index, 'modules', moduleIndex)
-                                }
-                                className="p-1 text-red-500 hover:text-red-600"
-                              >
-                                <Trash2 className="h-3 w-3" />
-                              </button>
+                      <div className="space-y-4">
+                        {modules.map((module, moduleIndex) => {
+                          const moduleBlocks = Array.isArray(module.contentBlocks) ? module.contentBlocks : [];
+                          const moduleResources = Array.isArray(module.resources) ? module.resources : [];
+                          const moduleQuiz = normalizeModuleQuiz(module.quiz);
+
+                          return (
+                            <div
+                              key={module.id || moduleIndex}
+                              className="border border-gray-200 rounded-lg p-4 space-y-4"
+                            >
+                              <div className="flex items-center justify-between">
+                                <p className="text-xs font-medium text-gray-600">Module {moduleIndex + 1}</p>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    removeNestedObjectItem('courses', index, 'modules', moduleIndex)
+                                  }
+                                  className="p-1 text-red-500 hover:text-red-600"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </button>
+                              </div>
+
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <input
+                                  type="text"
+                                  value={module.title || ''}
+                                  onChange={(event) =>
+                                    updateModuleField(index, moduleIndex, 'title', event.target.value)
+                                  }
+                                  className="border border-gray-300 rounded-lg px-3 py-2"
+                                  placeholder="Module title"
+                                />
+                                <input
+                                  type="number"
+                                  min="1"
+                                  value={module.duration ?? ''}
+                                  onChange={(event) => {
+                                    const nextValue = event.target.value;
+                                    updateModuleField(
+                                      index,
+                                      moduleIndex,
+                                      'duration',
+                                      nextValue === '' ? '' : Number(nextValue)
+                                    );
+                                  }}
+                                  className="border border-gray-300 rounded-lg px-3 py-2"
+                                  placeholder="Minutes"
+                                />
+                                <select
+                                  value={module.type || 'lesson'}
+                                  onChange={(event) =>
+                                    updateModuleField(index, moduleIndex, 'type', event.target.value)
+                                  }
+                                  className="border border-gray-300 rounded-lg px-3 py-2 bg-white"
+                                >
+                                  <option value="lesson">Lesson</option>
+                                  <option value="practical">Practical</option>
+                                  <option value="quiz">Quiz</option>
+                                  <option value="assignment">Assignment</option>
+                                </select>
+                              </div>
+
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <input
+                                  type="text"
+                                  value={module.slug || ''}
+                                  onChange={(event) =>
+                                    updateModuleField(index, moduleIndex, 'slug', event.target.value)
+                                  }
+                                  className="border border-gray-300 rounded-lg px-3 py-2"
+                                  placeholder="Slug (optional)"
+                                />
+                                <input
+                                  type="text"
+                                  value={module.description || ''}
+                                  onChange={(event) =>
+                                    updateModuleField(index, moduleIndex, 'description', event.target.value)
+                                  }
+                                  className="border border-gray-300 rounded-lg px-3 py-2"
+                                  placeholder="Short description"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-xs font-medium text-gray-500 mb-1">Module Content (Markdown)</label>
+                                <textarea
+                                  rows={4}
+                                  value={module.content || ''}
+                                  onChange={(event) =>
+                                    updateModuleField(index, moduleIndex, 'content', event.target.value)
+                                  }
+                                  className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                                  placeholder="Module content shown on the detail page"
+                                />
+                              </div>
+
+                              <div className="space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <p className="text-sm font-medium text-gray-600">Module Content Blocks</p>
+                                  <div className="flex flex-wrap gap-2">
+                                    {['heading', 'subheading', 'paragraph', 'list', 'link', 'image', 'video', 'pdf'].map((type) => (
+                                      <button
+                                        key={type}
+                                        type="button"
+                                        onClick={() => addModuleContentBlock(index, moduleIndex, type)}
+                                        className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-full"
+                                      >
+                                        <Plus className="h-3 w-3" />
+                                        {type}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                                {moduleBlocks.length === 0 && (
+                                  <p className="text-sm text-gray-500">Add content blocks to build this module.</p>
+                                )}
+                                {moduleBlocks.map((block, blockIndex) => (
+                                  <div
+                                    key={block.id || `${block.type}-${blockIndex}`}
+                                    className="border border-gray-200 rounded-lg p-4"
+                                  >
+                                    <div className="flex items-center justify-between mb-3">
+                                      <span className="text-sm font-medium text-gray-800">{block.type.toUpperCase()}</span>
+                                      <div className="flex items-center gap-2">
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            moveModuleContentBlock(index, moduleIndex, blockIndex, blockIndex - 1)
+                                          }
+                                          disabled={blockIndex === 0}
+                                          className="text-xs text-gray-500 hover:text-gray-700 disabled:opacity-40"
+                                        >
+                                          <ArrowUp className="h-4 w-4" />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            moveModuleContentBlock(index, moduleIndex, blockIndex, blockIndex + 1)
+                                          }
+                                          disabled={blockIndex === moduleBlocks.length - 1}
+                                          className="text-xs text-gray-500 hover:text-gray-700 disabled:opacity-40"
+                                        >
+                                          <ArrowDown className="h-4 w-4" />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => removeModuleContentBlock(index, moduleIndex, blockIndex)}
+                                          className="text-xs text-red-600 hover:text-red-700"
+                                        >
+                                          <Trash2 className="h-4 w-4" />
+                                        </button>
+                                      </div>
+                                    </div>
+
+                                    {['heading', 'subheading', 'paragraph'].includes(block.type) && (
+                                      <textarea
+                                        rows={block.type === 'paragraph' ? 3 : 2}
+                                        value={block.text || ''}
+                                        onChange={(event) =>
+                                          updateModuleContentBlockField(
+                                            index,
+                                            moduleIndex,
+                                            blockIndex,
+                                            'text',
+                                            event.target.value
+                                          )
+                                        }
+                                        className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                                        placeholder={`Enter ${block.type} text`}
+                                      />
+                                    )}
+
+                                    {block.type === 'list' && (
+                                      <textarea
+                                        rows={4}
+                                        value={Array.isArray(block.items) ? block.items.join('\n') : ''}
+                                        onChange={(event) =>
+                                          updateModuleContentBlockField(
+                                            index,
+                                            moduleIndex,
+                                            blockIndex,
+                                            'items',
+                                            event.target.value
+                                              .split('\n')
+                                              .map((itemValue) => itemValue.trim())
+                                              .filter(Boolean)
+                                          )
+                                        }
+                                        className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                                        placeholder="One list item per line"
+                                      />
+                                    )}
+
+                                    {block.type === 'link' && (
+                                      <div className="space-y-2">
+                                        <input
+                                          type="text"
+                                          value={block.url || ''}
+                                          onChange={(event) =>
+                                            updateModuleContentBlockField(
+                                              index,
+                                              moduleIndex,
+                                              blockIndex,
+                                              'url',
+                                              event.target.value
+                                            )
+                                          }
+                                          className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                                          placeholder="Paste link URL (https://...)"
+                                        />
+                                        <input
+                                          type="text"
+                                          value={block.caption || ''}
+                                          onChange={(event) =>
+                                            updateModuleContentBlockField(
+                                              index,
+                                              moduleIndex,
+                                              blockIndex,
+                                              'caption',
+                                              event.target.value
+                                            )
+                                          }
+                                          className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                                          placeholder="Link text (optional)"
+                                        />
+                                        <textarea
+                                          rows={2}
+                                          value={block.text || ''}
+                                          onChange={(event) =>
+                                            updateModuleContentBlockField(
+                                              index,
+                                              moduleIndex,
+                                              blockIndex,
+                                              'text',
+                                              event.target.value
+                                            )
+                                          }
+                                          className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                                          placeholder="Short description"
+                                        />
+                                      </div>
+                                    )}
+
+                                    {['image', 'video', 'pdf'].includes(block.type) && (
+                                      <div className="space-y-2">
+                                        <div className="flex items-center gap-3">
+                                          <input
+                                            type="text"
+                                            value={block.url || ''}
+                                            onChange={(event) =>
+                                              updateModuleContentBlockField(
+                                                index,
+                                                moduleIndex,
+                                                blockIndex,
+                                                'url',
+                                                event.target.value
+                                              )
+                                            }
+                                            className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                                            placeholder={`Paste ${block.type} URL or upload`}
+                                          />
+                                          <label className="inline-flex items-center gap-2 text-xs bg-gray-100 px-3 py-2 rounded-lg cursor-pointer">
+                                            <Upload className="h-4 w-4" />
+                                            Upload
+                                            <input
+                                              type="file"
+                                              accept={
+                                                block.type === 'image'
+                                                  ? 'image/*'
+                                                  : block.type === 'video'
+                                                    ? 'video/*'
+                                                    : 'application/pdf'
+                                              }
+                                              onChange={(event) =>
+                                                handleModuleContentBlockUpload(
+                                                  index,
+                                                  moduleIndex,
+                                                  blockIndex,
+                                                  event.target.files?.[0]
+                                                )
+                                              }
+                                              className="hidden"
+                                              disabled={uploading}
+                                            />
+                                          </label>
+                                        </div>
+                                        <input
+                                          type="text"
+                                          value={block.caption || ''}
+                                          onChange={(event) =>
+                                            updateModuleContentBlockField(
+                                              index,
+                                              moduleIndex,
+                                              blockIndex,
+                                              'caption',
+                                              event.target.value
+                                            )
+                                          }
+                                          className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                                          placeholder="Caption (optional)"
+                                        />
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+
+                              <div className="space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <p className="text-sm font-medium text-gray-600">Module Resources</p>
+                                  <button
+                                    type="button"
+                                    onClick={() => addModuleResource(index, moduleIndex)}
+                                    className="inline-flex items-center gap-2 text-xs text-blue-600 hover:text-blue-700"
+                                  >
+                                    <Plus className="h-3 w-3" />
+                                    Add resource
+                                  </button>
+                                </div>
+                                {moduleResources.length === 0 ? (
+                                  <p className="text-sm text-gray-500">No resources added yet.</p>
+                                ) : (
+                                  <div className="space-y-3">
+                                    {moduleResources.map((resource, resourceIndex) => (
+                                      <div
+                                        key={resource.id || resourceIndex}
+                                        className="border border-gray-200 rounded-lg p-3 space-y-3"
+                                      >
+                                        <div className="flex items-center justify-between">
+                                          <p className="text-xs font-medium text-gray-500">
+                                            Resource {resourceIndex + 1}
+                                          </p>
+                                          <button
+                                            type="button"
+                                            onClick={() => removeModuleResource(index, moduleIndex, resourceIndex)}
+                                            className="p-1 text-red-500 hover:text-red-600"
+                                          >
+                                            <Trash2 className="h-4 w-4" />
+                                          </button>
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                          <input
+                                            type="text"
+                                            value={resource.title || ''}
+                                            onChange={(event) =>
+                                              updateModuleResourceField(
+                                                index,
+                                                moduleIndex,
+                                                resourceIndex,
+                                                'title',
+                                                event.target.value
+                                              )
+                                            }
+                                            className="border border-gray-300 rounded-lg px-3 py-2"
+                                            placeholder="Resource title"
+                                          />
+                                          <input
+                                            type="text"
+                                            value={resource.type || ''}
+                                            onChange={(event) =>
+                                              updateModuleResourceField(
+                                                index,
+                                                moduleIndex,
+                                                resourceIndex,
+                                                'type',
+                                                event.target.value
+                                              )
+                                            }
+                                            className="border border-gray-300 rounded-lg px-3 py-2"
+                                            placeholder="Type (pdf, video, link)"
+                                          />
+                                        </div>
+                                        <textarea
+                                          rows={2}
+                                          value={resource.description || ''}
+                                          onChange={(event) =>
+                                            updateModuleResourceField(
+                                              index,
+                                              moduleIndex,
+                                              resourceIndex,
+                                              'description',
+                                              event.target.value
+                                            )
+                                          }
+                                          className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                                          placeholder="Resource description"
+                                        />
+                                        <div className="flex items-center gap-3">
+                                          <input
+                                            type="text"
+                                            value={resource.url || ''}
+                                            onChange={(event) =>
+                                              updateModuleResourceField(
+                                                index,
+                                                moduleIndex,
+                                                resourceIndex,
+                                                'url',
+                                                event.target.value
+                                              )
+                                            }
+                                            className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                                            placeholder="Resource URL"
+                                          />
+                                          <label className="inline-flex items-center gap-2 text-xs bg-gray-100 px-3 py-2 rounded-lg cursor-pointer">
+                                            <Upload className="h-4 w-4" />
+                                            Upload
+                                            <input
+                                              type="file"
+                                              accept="image/*,video/*,application/pdf"
+                                              onChange={(event) =>
+                                                handleModuleResourceUpload(
+                                                  index,
+                                                  moduleIndex,
+                                                  resourceIndex,
+                                                  'url',
+                                                  event.target.files?.[0]
+                                                )
+                                              }
+                                              className="hidden"
+                                              disabled={uploading}
+                                            />
+                                          </label>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <input
+                                      type="checkbox"
+                                      checked={Boolean(moduleQuiz.enabled)}
+                                      onChange={(event) =>
+                                        updateModuleQuizField(index, moduleIndex, 'enabled', event.target.checked)
+                                      }
+                                      className="h-4 w-4"
+                                    />
+                                    <span className="text-sm font-medium text-gray-600">Enable quiz</span>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => addModuleQuizQuestion(index, moduleIndex)}
+                                    className="inline-flex items-center gap-2 text-xs text-blue-600 hover:text-blue-700"
+                                  >
+                                    <Plus className="h-3 w-3" />
+                                    Add question
+                                  </button>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={moduleQuiz.timeLimitMinutes ?? ''}
+                                    onChange={(event) => {
+                                      const nextValue = event.target.value;
+                                      updateModuleQuizField(
+                                        index,
+                                        moduleIndex,
+                                        'timeLimitMinutes',
+                                        nextValue === '' ? '' : Number(nextValue)
+                                      );
+                                    }}
+                                    className="border border-gray-300 rounded-lg px-3 py-2"
+                                    placeholder="Time limit (minutes)"
+                                  />
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max="100"
+                                    value={moduleQuiz.passingScore ?? ''}
+                                    onChange={(event) => {
+                                      const nextValue = event.target.value;
+                                      updateModuleQuizField(
+                                        index,
+                                        moduleIndex,
+                                        'passingScore',
+                                        nextValue === '' ? '' : Number(nextValue)
+                                      );
+                                    }}
+                                    className="border border-gray-300 rounded-lg px-3 py-2"
+                                    placeholder="Passing score (%)"
+                                  />
+                                </div>
+                                {moduleQuiz.questions.length === 0 ? (
+                                  <p className="text-sm text-gray-500">Add quiz questions to enable grading.</p>
+                                ) : (
+                                  <div className="space-y-4">
+                                    {moduleQuiz.questions.map((question, questionIndex) => (
+                                      <div
+                                        key={question.id || questionIndex}
+                                        className="border border-gray-200 rounded-lg p-3 space-y-3"
+                                      >
+                                        <div className="flex items-center justify-between">
+                                          <p className="text-xs font-medium text-gray-500">
+                                            Question {questionIndex + 1}
+                                          </p>
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              removeModuleQuizQuestion(index, moduleIndex, questionIndex)
+                                            }
+                                            className="p-1 text-red-500 hover:text-red-600"
+                                          >
+                                            <Trash2 className="h-4 w-4" />
+                                          </button>
+                                        </div>
+                                        <textarea
+                                          rows={2}
+                                          value={question.text || ''}
+                                          onChange={(event) =>
+                                            updateModuleQuizQuestionField(
+                                              index,
+                                              moduleIndex,
+                                              questionIndex,
+                                              'text',
+                                              event.target.value
+                                            )
+                                          }
+                                          className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                                          placeholder="Question text"
+                                        />
+                                        <label className="flex items-center gap-2 text-xs text-gray-600">
+                                          <input
+                                            type="checkbox"
+                                            checked={Boolean(question.allowMultiple)}
+                                            onChange={(event) =>
+                                              updateModuleQuizQuestionField(
+                                                index,
+                                                moduleIndex,
+                                                questionIndex,
+                                                'allowMultiple',
+                                                event.target.checked
+                                              )
+                                            }
+                                            className="h-4 w-4"
+                                          />
+                                          Allow multiple selections
+                                        </label>
+                                        <div className="space-y-2">
+                                          <div className="flex items-center justify-between">
+                                            <p className="text-xs font-medium text-gray-500">Options</p>
+                                            <button
+                                              type="button"
+                                              onClick={() => addModuleQuizOption(index, moduleIndex, questionIndex)}
+                                              className="inline-flex items-center gap-2 text-xs text-blue-600 hover:text-blue-700"
+                                            >
+                                              <Plus className="h-3 w-3" />
+                                              Add option
+                                            </button>
+                                          </div>
+                                          {(question.options || []).length === 0 ? (
+                                            <p className="text-xs text-gray-500">Add options for this question.</p>
+                                          ) : (
+                                            <div className="space-y-2">
+                                              {(question.options || []).map((option, optionIndex) => (
+                                                <div
+                                                  key={option.id || optionIndex}
+                                                  className="border border-gray-200 rounded-lg p-3 space-y-2"
+                                                >
+                                                  <div className="flex items-center justify-between">
+                                                    <p className="text-xs text-gray-500">Option {optionIndex + 1}</p>
+                                                    <button
+                                                      type="button"
+                                                      onClick={() =>
+                                                        removeModuleQuizOption(
+                                                          index,
+                                                          moduleIndex,
+                                                          questionIndex,
+                                                          optionIndex
+                                                        )
+                                                      }
+                                                      className="p-1 text-red-500 hover:text-red-600"
+                                                    >
+                                                      <Trash2 className="h-4 w-4" />
+                                                    </button>
+                                                  </div>
+                                                  <input
+                                                    type="text"
+                                                    value={option.text || ''}
+                                                    onChange={(event) =>
+                                                      updateModuleQuizOptionField(
+                                                        index,
+                                                        moduleIndex,
+                                                        questionIndex,
+                                                        optionIndex,
+                                                        'text',
+                                                        event.target.value
+                                                      )
+                                                    }
+                                                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                                                    placeholder="Option text"
+                                                  />
+                                                  <label className="flex items-center gap-2 text-xs text-gray-600">
+                                                    <input
+                                                      type="checkbox"
+                                                      checked={Boolean(option.isCorrect)}
+                                                      onChange={(event) =>
+                                                        updateModuleQuizOptionField(
+                                                          index,
+                                                          moduleIndex,
+                                                          questionIndex,
+                                                          optionIndex,
+                                                          'isCorrect',
+                                                          event.target.checked
+                                                        )
+                                                      }
+                                                      className="h-4 w-4"
+                                                    />
+                                                    Mark as correct
+                                                  </label>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                              <input
-                                type="text"
-                                value={module.title || ''}
-                                onChange={(event) =>
-                                  updateNestedObjectField('courses', index, 'modules', moduleIndex, 'title', event.target.value)
-                                }
-                                className="border border-gray-300 rounded-lg px-3 py-2"
-                                placeholder="Module title"
-                              />
-                              <input
-                                type="number"
-                                min="1"
-                                value={module.duration ?? ''}
-                                onChange={(event) =>
-                                  updateNestedObjectField(
-                                    'courses',
-                                    index,
-                                    'modules',
-                                    moduleIndex,
-                                    'duration',
-                                    Number(event.target.value)
-                                  )
-                                }
-                                className="border border-gray-300 rounded-lg px-3 py-2"
-                                placeholder="Minutes"
-                              />
-                              <select
-                                value={module.type || 'lesson'}
-                                onChange={(event) =>
-                                  updateNestedObjectField('courses', index, 'modules', moduleIndex, 'type', event.target.value)
-                                }
-                                className="border border-gray-300 rounded-lg px-3 py-2 bg-white"
-                              >
-                                <option value="lesson">Lesson</option>
-                                <option value="practical">Practical</option>
-                                <option value="quiz">Quiz</option>
-                                <option value="assignment">Assignment</option>
-                              </select>
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -769,38 +1718,497 @@ const AdminPageContent = () => {
                   className="w-full border border-gray-300 rounded-lg px-3 py-2"
                   placeholder="Describe this category"
                 />
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-medium text-gray-600">Items</p>
                     <button
                       type="button"
-                      onClick={() => addNestedListItem('categories', index, 'items', '')}
+                      onClick={() =>
+                        addNestedObjectItem('categories', index, 'items', createResourceItem())
+                      }
                       className="inline-flex items-center gap-2 text-xs text-blue-600 hover:text-blue-700"
                     >
                       <Plus className="h-3 w-3" />
                       Add item
                     </button>
                   </div>
-                  {(category.items || []).map((item, itemIndex) => (
-                    <div key={`${category.id || index}-item-${itemIndex}`} className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        value={item}
-                        onChange={(event) =>
-                          updateNestedListItem('categories', index, 'items', itemIndex, event.target.value)
-                        }
-                        className="flex-1 border border-gray-300 rounded-lg px-3 py-2"
-                        placeholder={`Item ${itemIndex + 1}`}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => removeNestedListItem('categories', index, 'items', itemIndex)}
-                        className="p-1 text-red-500 hover:text-red-600"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  ))}
+                  {(category.items || []).length === 0 ? (
+                    <p className="text-sm text-gray-500">No items yet. Add one to populate this category.</p>
+                  ) : (
+                    (category.items || []).map((item, itemIndex) => {
+                      const normalizedItem = normalizeResourceItem(item);
+                      const contentBlocks = normalizedItem.contentBlocks || [];
+
+                      return (
+                        <div
+                          key={`${category.id || index}-item-${itemIndex}`}
+                          className="border border-gray-200 rounded-lg p-3 space-y-4"
+                        >
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs font-medium text-gray-500">Item {itemIndex + 1}</p>
+                            <button
+                              type="button"
+                              onClick={() => removeNestedObjectItem('categories', index, 'items', itemIndex)}
+                              className="p-1 text-red-500 hover:text-red-600"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <input
+                              type="text"
+                              value={normalizedItem.title || ''}
+                              onChange={(event) =>
+                                updateResourceItem(index, itemIndex, (current) => ({
+                                  ...current,
+                                  title: event.target.value,
+                                }))
+                              }
+                              onBlur={(event) => {
+                                if (!normalizedItem.slug && event.target.value) {
+                                  updateResourceItem(index, itemIndex, (current) => ({
+                                    ...current,
+                                    slug: slugify(event.target.value),
+                                  }));
+                                }
+                              }}
+                              className="border border-gray-300 rounded-lg px-3 py-2"
+                              placeholder="Item title"
+                            />
+                            <input
+                              type="text"
+                              value={normalizedItem.slug || ''}
+                              onChange={(event) =>
+                                updateResourceItem(index, itemIndex, (current) => ({
+                                  ...current,
+                                  slug: event.target.value,
+                                }))
+                              }
+                              className="border border-gray-300 rounded-lg px-3 py-2"
+                              placeholder="Slug (used in URL)"
+                            />
+                          </div>
+                          <input
+                            type="text"
+                            value={normalizedItem.subtitle || ''}
+                            onChange={(event) =>
+                              updateResourceItem(index, itemIndex, (current) => ({
+                                ...current,
+                                subtitle: event.target.value,
+                              }))
+                            }
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                            placeholder="Subtitle (optional)"
+                          />
+                          <textarea
+                            rows={2}
+                            value={normalizedItem.summary || ''}
+                            onChange={(event) =>
+                              updateResourceItem(index, itemIndex, (current) => ({
+                                ...current,
+                                summary: event.target.value,
+                              }))
+                            }
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                            placeholder="Short summary"
+                          />
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <input
+                              type="text"
+                              value={normalizedItem.type || ''}
+                              onChange={(event) =>
+                                updateResourceItem(index, itemIndex, (current) => ({
+                                  ...current,
+                                  type: event.target.value,
+                                }))
+                              }
+                              className="border border-gray-300 rounded-lg px-3 py-2"
+                              placeholder="Type (lesson, rubric)"
+                            />
+                            <input
+                              type="number"
+                              min="0"
+                              value={normalizedItem.duration ?? ''}
+                              onChange={(event) => {
+                                const nextValue = event.target.value;
+                                updateResourceItem(index, itemIndex, (current) => ({
+                                  ...current,
+                                  duration: nextValue === '' ? '' : Number(nextValue),
+                                }));
+                              }}
+                              className="border border-gray-300 rounded-lg px-3 py-2"
+                              placeholder="Minutes"
+                            />
+                            <input
+                              type="text"
+                              value={formatCsv(normalizedItem.tags)}
+                              onChange={(event) =>
+                                updateResourceItem(index, itemIndex, (current) => ({
+                                  ...current,
+                                  tags: parseCsv(event.target.value),
+                                }))
+                              }
+                              className="border border-gray-300 rounded-lg px-3 py-2"
+                              placeholder="Tags (comma separated)"
+                            />
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-500 mb-1">Download file</label>
+                              <div className="flex items-center gap-3">
+                                <input
+                                  type="text"
+                                  value={normalizedItem.downloadUrl || ''}
+                                  onChange={(event) =>
+                                    updateResourceItem(index, itemIndex, (current) => ({
+                                      ...current,
+                                      downloadUrl: event.target.value,
+                                    }))
+                                  }
+                                  className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                                  placeholder="Download URL (PDF or file)"
+                                />
+                                <label className="inline-flex items-center gap-2 text-xs bg-gray-100 px-3 py-2 rounded-lg cursor-pointer">
+                                  <Upload className="h-4 w-4" />
+                                  Upload
+                                  <input
+                                    type="file"
+                                    accept="application/pdf"
+                                    onChange={(event) =>
+                                      handleResourceItemUpload(index, itemIndex, 'downloadUrl', event.target.files?.[0])
+                                    }
+                                    className="hidden"
+                                    disabled={uploading}
+                                  />
+                                </label>
+                              </div>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-500 mb-1">External URL</label>
+                              <input
+                                type="text"
+                                value={normalizedItem.externalUrl || ''}
+                                onChange={(event) =>
+                                  updateResourceItem(index, itemIndex, (current) => ({
+                                    ...current,
+                                    externalUrl: event.target.value,
+                                  }))
+                                }
+                                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                                placeholder="External URL"
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-500 mb-1">Thumbnail Image</label>
+                            <div className="flex items-center gap-3">
+                              <input
+                                type="text"
+                                value={normalizedItem.thumbnailUrl || ''}
+                                onChange={(event) =>
+                                  updateResourceItem(index, itemIndex, (current) => ({
+                                    ...current,
+                                    thumbnailUrl: event.target.value,
+                                  }))
+                                }
+                                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                                placeholder="Paste image URL or upload"
+                              />
+                              <label className="inline-flex items-center gap-2 text-xs bg-gray-100 px-3 py-2 rounded-lg cursor-pointer">
+                                <Upload className="h-4 w-4" />
+                                Upload
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  onChange={(event) =>
+                                    handleResourceItemUpload(index, itemIndex, 'thumbnailUrl', event.target.files?.[0])
+                                  }
+                                  className="hidden"
+                                  disabled={uploading}
+                                />
+                              </label>
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-500 mb-1">Content (Markdown)</label>
+                            <textarea
+                              rows={4}
+                              value={normalizedItem.content || ''}
+                              onChange={(event) =>
+                                updateResourceItem(index, itemIndex, (current) => ({
+                                  ...current,
+                                  content: event.target.value,
+                                }))
+                              }
+                              className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                              placeholder="Markdown content shown on the detail page"
+                            />
+                          </div>
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                              <p className="text-sm font-medium text-gray-600">Content Blocks</p>
+                              <div className="flex flex-wrap gap-2">
+                                {['heading', 'subheading', 'paragraph', 'list', 'link', 'image', 'video', 'pdf'].map((type) => (
+                                  <button
+                                    key={type}
+                                    type="button"
+                                    onClick={() => addResourceBlock(index, itemIndex, type)}
+                                    className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-full"
+                                  >
+                                    <Plus className="h-3 w-3" />
+                                    {type}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                            {contentBlocks.length === 0 && (
+                              <p className="text-sm text-gray-500">Add content blocks to build the resource page.</p>
+                            )}
+                            {contentBlocks.map((block, blockIndex) => (
+                              <div
+                                key={block.id || `${block.type}-${blockIndex}`}
+                                className="border border-gray-200 rounded-lg p-4"
+                              >
+                                <div className="flex items-center justify-between mb-3">
+                                  <span className="text-sm font-medium text-gray-800">{block.type.toUpperCase()}</span>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => moveResourceBlock(index, itemIndex, blockIndex, blockIndex - 1)}
+                                      disabled={blockIndex === 0}
+                                      className="text-xs text-gray-500 hover:text-gray-700 disabled:opacity-40"
+                                    >
+                                      <ArrowUp className="h-4 w-4" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => moveResourceBlock(index, itemIndex, blockIndex, blockIndex + 1)}
+                                      disabled={blockIndex === contentBlocks.length - 1}
+                                      className="text-xs text-gray-500 hover:text-gray-700 disabled:opacity-40"
+                                    >
+                                      <ArrowDown className="h-4 w-4" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => removeResourceBlock(index, itemIndex, blockIndex)}
+                                      className="text-xs text-red-600 hover:text-red-700"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {['heading', 'subheading', 'paragraph'].includes(block.type) && (
+                                  <textarea
+                                    rows={block.type === 'paragraph' ? 3 : 2}
+                                    value={block.text || ''}
+                                    onChange={(event) =>
+                                      updateResourceBlockField(index, itemIndex, blockIndex, 'text', event.target.value)
+                                    }
+                                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                                    placeholder={`Enter ${block.type} text`}
+                                  />
+                                )}
+
+                                {block.type === 'list' && (
+                                  <textarea
+                                    rows={4}
+                                    value={Array.isArray(block.items) ? block.items.join('\n') : ''}
+                                    onChange={(event) =>
+                                      updateResourceBlockField(
+                                        index,
+                                        itemIndex,
+                                        blockIndex,
+                                        'items',
+                                        event.target.value
+                                          .split('\n')
+                                          .map((itemValue) => itemValue.trim())
+                                          .filter(Boolean)
+                                      )
+                                    }
+                                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                                    placeholder="One list item per line"
+                                  />
+                                )}
+
+                                {block.type === 'link' && (
+                                  <div className="space-y-2">
+                                    <input
+                                      type="text"
+                                      value={block.url || ''}
+                                      onChange={(event) =>
+                                        updateResourceBlockField(index, itemIndex, blockIndex, 'url', event.target.value)
+                                      }
+                                      className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                                      placeholder="Paste link URL (https://...)"
+                                    />
+                                    <input
+                                      type="text"
+                                      value={block.caption || ''}
+                                      onChange={(event) =>
+                                        updateResourceBlockField(index, itemIndex, blockIndex, 'caption', event.target.value)
+                                      }
+                                      className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                                      placeholder="Link text (optional)"
+                                    />
+                                    <textarea
+                                      rows={2}
+                                      value={block.text || ''}
+                                      onChange={(event) =>
+                                        updateResourceBlockField(index, itemIndex, blockIndex, 'text', event.target.value)
+                                      }
+                                      className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                                      placeholder="Description (optional)"
+                                    />
+                                  </div>
+                                )}
+
+                                {['image', 'pdf'].includes(block.type) && (
+                                  <div className="space-y-2">
+                                    <input
+                                      type="text"
+                                      value={block.url || ''}
+                                      onChange={(event) =>
+                                        updateResourceBlockField(index, itemIndex, blockIndex, 'url', event.target.value)
+                                      }
+                                      className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                                      placeholder="Paste a file URL or upload"
+                                    />
+                                    <div className="flex items-center gap-3">
+                                      <input
+                                        type="text"
+                                        value={block.caption || ''}
+                                        onChange={(event) =>
+                                          updateResourceBlockField(index, itemIndex, blockIndex, 'caption', event.target.value)
+                                        }
+                                        className="flex-1 border border-gray-300 rounded-lg px-3 py-2"
+                                        placeholder="Caption (optional)"
+                                      />
+                                      <label className="inline-flex items-center gap-2 text-xs bg-gray-100 px-3 py-2 rounded-lg cursor-pointer">
+                                        <Upload className="h-4 w-4" />
+                                        Upload
+                                        <input
+                                          type="file"
+                                          accept={block.type === 'image' ? 'image/*' : 'application/pdf'}
+                                          onChange={(event) =>
+                                            handleResourceBlockUpload(
+                                              index,
+                                              itemIndex,
+                                              blockIndex,
+                                              event.target.files?.[0]
+                                            )
+                                          }
+                                          className="hidden"
+                                          disabled={uploading}
+                                        />
+                                      </label>
+                                    </div>
+                                    {block.type === 'pdf' && (
+                                      <div className="flex items-center gap-3">
+                                        <input
+                                          type="text"
+                                          value={block.thumbnailUrl || ''}
+                                          onChange={(event) =>
+                                            updateResourceBlockField(
+                                              index,
+                                              itemIndex,
+                                              blockIndex,
+                                              'thumbnailUrl',
+                                              event.target.value
+                                            )
+                                          }
+                                          className="flex-1 border border-gray-300 rounded-lg px-3 py-2"
+                                          placeholder="PDF thumbnail URL (optional)"
+                                        />
+                                        <label className="inline-flex items-center gap-2 text-xs bg-gray-100 px-3 py-2 rounded-lg cursor-pointer">
+                                          <Upload className="h-4 w-4" />
+                                          Upload thumbnail
+                                          <input
+                                            type="file"
+                                            accept="image/*"
+                                            onChange={(event) =>
+                                              handleResourceBlockUpload(
+                                                index,
+                                                itemIndex,
+                                                blockIndex,
+                                                event.target.files?.[0],
+                                                { urlField: 'thumbnailUrl', setCaption: false }
+                                              )
+                                            }
+                                            className="hidden"
+                                            disabled={uploading}
+                                          />
+                                        </label>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+
+                                {block.type === 'video' && (
+                                  <div className="space-y-2">
+                                    <input
+                                      type="text"
+                                      value={block.url || ''}
+                                      onChange={(event) =>
+                                        updateResourceBlockField(index, itemIndex, blockIndex, 'url', event.target.value)
+                                      }
+                                      className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                                      placeholder="Paste video link (YouTube, Vimeo, etc.)"
+                                    />
+                                    <div className="flex items-center gap-3">
+                                      <input
+                                        type="text"
+                                        value={block.thumbnailUrl || ''}
+                                        onChange={(event) =>
+                                          updateResourceBlockField(
+                                            index,
+                                            itemIndex,
+                                            blockIndex,
+                                            'thumbnailUrl',
+                                            event.target.value
+                                          )
+                                        }
+                                        className="flex-1 border border-gray-300 rounded-lg px-3 py-2"
+                                        placeholder="Video thumbnail URL (optional)"
+                                      />
+                                      <label className="inline-flex items-center gap-2 text-xs bg-gray-100 px-3 py-2 rounded-lg cursor-pointer">
+                                        <Upload className="h-4 w-4" />
+                                        Upload
+                                        <input
+                                          type="file"
+                                          accept="image/*"
+                                          onChange={(event) =>
+                                            handleResourceBlockUpload(
+                                              index,
+                                              itemIndex,
+                                              blockIndex,
+                                              event.target.files?.[0],
+                                              { urlField: 'thumbnailUrl', setCaption: false }
+                                            )
+                                          }
+                                          className="hidden"
+                                          disabled={uploading}
+                                        />
+                                      </label>
+                                    </div>
+                                    <input
+                                      type="text"
+                                      value={block.caption || ''}
+                                      onChange={(event) =>
+                                        updateResourceBlockField(index, itemIndex, blockIndex, 'caption', event.target.value)
+                                      }
+                                      className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                                      placeholder="Caption (optional)"
+                                    />
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
               </div>
             ))}
@@ -931,6 +2339,7 @@ const AdminPageContent = () => {
               addListItem('policies', {
                 id: `policy-${Date.now()}`,
                 title: '',
+                slug: '',
                 description: '',
                 category: '',
                 scope: 'national',
@@ -939,6 +2348,8 @@ const AdminPageContent = () => {
                 studentsReached: '',
                 budget: '',
                 startDate: '',
+                keyPoints: [],
+                content: '',
               })
             }
             className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700"
@@ -951,8 +2362,11 @@ const AdminPageContent = () => {
           <p className="text-sm text-gray-500">Add policy entries to highlight initiatives.</p>
         ) : (
           <div className="space-y-4">
-            {policies.map((policy, index) => (
-              <div key={policy.id || index} className="border border-gray-200 rounded-lg p-4 space-y-4">
+            {policies.map((policy, index) => {
+              const keyPoints = Array.isArray(policy.keyPoints) ? policy.keyPoints : [];
+
+              return (
+                <div key={policy.id || index} className="border border-gray-200 rounded-lg p-4 space-y-4">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-medium text-gray-600">Policy {index + 1}</p>
                   <div className="flex items-center gap-2">
@@ -986,8 +2400,20 @@ const AdminPageContent = () => {
                     type="text"
                     value={policy.title || ''}
                     onChange={(event) => updateListItemField('policies', index, 'title', event.target.value)}
+                    onBlur={(event) => {
+                      if (!policy.slug && event.target.value) {
+                        updateListItemField('policies', index, 'slug', slugify(event.target.value));
+                      }
+                    }}
                     className="border border-gray-300 rounded-lg px-3 py-2"
                     placeholder="Policy title"
+                  />
+                  <input
+                    type="text"
+                    value={policy.slug || ''}
+                    onChange={(event) => updateListItemField('policies', index, 'slug', event.target.value)}
+                    className="border border-gray-300 rounded-lg px-3 py-2"
+                    placeholder="Slug (used in URL)"
                   />
                   <input
                     type="text"
@@ -1060,8 +2486,58 @@ const AdminPageContent = () => {
                     className="border border-gray-300 rounded-lg px-3 py-2"
                   />
                 </div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium text-gray-600">Key Points</p>
+                    <button
+                      type="button"
+                      onClick={() => addNestedListItem('policies', index, 'keyPoints', '')}
+                      className="inline-flex items-center gap-2 text-xs text-blue-600 hover:text-blue-700"
+                    >
+                      <Plus className="h-3 w-3" />
+                      Add point
+                    </button>
+                  </div>
+                  {keyPoints.length === 0 ? (
+                    <p className="text-sm text-gray-500">Add key points to highlight focus areas.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {keyPoints.map((point, pointIndex) => (
+                        <div key={`${policy.id || index}-point-${pointIndex}`} className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={point || ''}
+                            onChange={(event) =>
+                              updateNestedListItem('policies', index, 'keyPoints', pointIndex, event.target.value)
+                            }
+                            className="flex-1 border border-gray-300 rounded-lg px-3 py-2"
+                            placeholder="Key point"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeNestedListItem('policies', index, 'keyPoints', pointIndex)}
+                            className="p-1 text-red-500 hover:text-red-600"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Detailed Content (Markdown)</label>
+                  <textarea
+                    rows={4}
+                    value={policy.content || ''}
+                    onChange={(event) => updateListItemField('policies', index, 'content', event.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                    placeholder="Markdown content shown on the policy detail page"
+                  />
+                </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>

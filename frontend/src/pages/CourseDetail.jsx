@@ -5,6 +5,39 @@ import toast from 'react-hot-toast';
 import { courseEnrollmentsAPI, pageContentsAPI } from '../services/api';
 import { PAGE_CONTENT_SLUGS, getDefaultPageContent } from '../utils/pageContentDefaults';
 import { addLocalEnrollment, getCourseId, readLocalEnrollments } from '../utils/courseEnrollment';
+import { getCompletionProgress, isModuleComplete } from '../utils/courseProgress';
+
+const normalizeCourseId = (value) => String(value || '').trim().toLowerCase();
+
+const slugify = (value) =>
+  String(value || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-');
+
+const getModuleId = (module, index) => {
+  if (!module) return `module-${index + 1}`;
+  return (
+    module.id ||
+    module.slug ||
+    slugify(module.title) ||
+    `module-${index + 1}`
+  );
+};
+
+const matchesCourseId = (course, targetId) => {
+  if (!course || !targetId) return false;
+  const normalizedTarget = normalizeCourseId(targetId);
+  const candidates = [
+    course.id,
+    course.slug,
+    getCourseId(course),
+    slugify(course.title)
+  ];
+  return candidates.some((candidate) => normalizeCourseId(candidate) === normalizedTarget);
+};
 
 const CourseDetail = () => {
   const { id } = useParams();
@@ -26,12 +59,19 @@ const CourseDetail = () => {
         setLoading(true);
         setError('');
 
-        const response = await pageContentsAPI.getBySlug(PAGE_CONTENT_SLUGS.TEACHER_COURSES);
-        const payload = response?.data || {};
-        const pageContent = payload.pageContent || payload.data?.pageContent;
-        const content = pageContent?.content || getDefaultPageContent(PAGE_CONTENT_SLUGS.TEACHER_COURSES);
-        const courses = Array.isArray(content?.courses) ? content.courses : [];
-        const matchedCourse = courses.find((item) => String(getCourseId(item)) === String(id));
+        let content = null;
+        try {
+          const response = await pageContentsAPI.getBySlug(PAGE_CONTENT_SLUGS.TEACHER_COURSES);
+          const payload = response?.data || {};
+          const pageContent = payload.pageContent || payload.data?.pageContent;
+          content = pageContent?.content || null;
+        } catch (error) {
+          console.warn('Falling back to default courses:', error);
+        }
+
+        const fallbackContent = content || getDefaultPageContent(PAGE_CONTENT_SLUGS.TEACHER_COURSES);
+        const courses = Array.isArray(fallbackContent?.courses) ? fallbackContent.courses : [];
+        const matchedCourse = courses.find((item) => matchesCourseId(item, id));
 
         if (!matchedCourse) {
           setCourse(null);
@@ -80,11 +120,16 @@ const CourseDetail = () => {
         } catch (error) {
           console.error('Failed to load enrollments:', error);
         }
+
+        const localIds = readLocalEnrollments();
+        if (isMounted) {
+          setIsEnrolled(localIds.includes(id));
+        }
+        return;
       }
 
-      const localIds = readLocalEnrollments();
       if (isMounted) {
-        setIsEnrolled(localIds.includes(id));
+        setIsEnrolled(false);
       }
     };
 
@@ -99,22 +144,21 @@ const CourseDetail = () => {
     if (!course || !id) return;
     const token = localStorage.getItem('token');
 
-    if (token) {
-      try {
-        await courseEnrollmentsAPI.enroll(id);
-        addLocalEnrollment(id);
-        setIsEnrolled(true);
-        toast.success('You are now enrolled in this course.');
-        return;
-      } catch (error) {
-        console.error('Enrollment failed:', error);
-        toast.error('Online enrollment failed. Saved locally.');
-      }
+    if (!token) {
+      toast.error('Please sign in or create an account to enroll.');
+      navigate('/admin?mode=register');
+      return;
     }
 
-    addLocalEnrollment(id);
-    setIsEnrolled(true);
-    toast.success('Enrollment saved on this device.');
+    try {
+      await courseEnrollmentsAPI.enroll(id);
+      addLocalEnrollment(id);
+      setIsEnrolled(true);
+      toast.success('You are now enrolled in this course.');
+    } catch (error) {
+      console.error('Enrollment failed:', error);
+      toast.error('Online enrollment failed. Please try again.');
+    }
   };
 
   const handleBack = () => {
@@ -152,7 +196,45 @@ const CourseDetail = () => {
   }
 
   const modules = Array.isArray(course.modules) ? course.modules : [];
+  const courseId = String(getCourseId(course) || id || '');
+  const completionProgress = getCompletionProgress(courseId, modules.length);
   const prerequisites = Array.isArray(course.prerequisites) ? course.prerequisites : [];
+
+  const handleOpenModule = (moduleId) => {
+    if (!moduleId) return;
+    if (!isEnrolled && !isPreview) {
+      const token = localStorage.getItem('token');
+      toast.error(token
+        ? 'Please enroll to access modules.'
+        : 'Please sign in to enroll and access modules.');
+      if (!token) {
+        navigate('/admin?mode=register');
+      }
+      return;
+    }
+    const query = isPreview ? '?preview=true' : '';
+    navigate(`/courses/${courseId}/modules/${moduleId}${query}`);
+  };
+
+  const handleResume = () => {
+    if (!modules.length) return;
+    let targetModule = null;
+    let targetIndex = 0;
+    for (let index = 0; index < modules.length; index += 1) {
+      const module = modules[index];
+      const moduleId = getModuleId(module, index);
+      if (!isModuleComplete(courseId, moduleId)) {
+        targetModule = module;
+        targetIndex = index;
+        break;
+      }
+    }
+    if (!targetModule) {
+      targetModule = modules[0];
+      targetIndex = 0;
+    }
+    handleOpenModule(getModuleId(targetModule, targetIndex));
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 py-10">
@@ -208,22 +290,38 @@ const CourseDetail = () => {
                     <p className="text-sm text-gray-500">Modules will be available soon.</p>
                   ) : (
                     <div className="space-y-3">
-                      {modules.map((module, index) => (
-                        <div
-                          key={module.id || index}
-                          className="flex items-start gap-3 border border-gray-200 rounded-lg p-4"
-                        >
-                          <div className="h-8 w-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-sm font-semibold">
-                            {index + 1}
-                          </div>
-                          <div>
-                            <h3 className="font-semibold text-gray-900">{module.title}</h3>
-                            <p className="text-sm text-gray-600">
-                              {module.duration} mins - {module.type}
-                            </p>
-                          </div>
-                        </div>
-                      ))}
+                      {modules.map((module, index) => {
+                        const moduleId = getModuleId(module, index);
+                        const completed = isModuleComplete(courseId, moduleId);
+                        return (
+                          <button
+                            type="button"
+                            key={moduleId}
+                            onClick={() => handleOpenModule(moduleId)}
+                            className="w-full text-left flex items-start gap-3 border border-gray-200 rounded-lg p-4 hover:border-blue-300 hover:shadow-sm transition"
+                          >
+                            <div className="h-8 w-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-sm font-semibold">
+                              {index + 1}
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex items-center justify-between gap-3">
+                                <h3 className="font-semibold text-gray-900">{module.title}</h3>
+                                {completed && (
+                                  <span className="text-xs font-semibold uppercase tracking-wide text-green-700 bg-green-50 px-2 py-1 rounded-full">
+                                    Completed
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-sm text-gray-600">
+                                {module.duration} mins · {module.type}
+                              </p>
+                              {module.description && (
+                                <p className="text-xs text-gray-500 mt-1">{module.description}</p>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -256,12 +354,21 @@ const CourseDetail = () => {
                   </div>
                 </div>
 
-                <div className="border-t border-gray-200 pt-4">
+                <div className="border-t border-gray-200 pt-4 space-y-3">
                   {isEnrolled ? (
-                    <div className="flex items-center gap-2 text-green-700 font-semibold">
-                      <CheckCircle2 className="h-5 w-5" />
-                      Enrolled
-                    </div>
+                    <>
+                      <div className="flex items-center gap-2 text-green-700 font-semibold">
+                        <CheckCircle2 className="h-5 w-5" />
+                        Enrolled
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleResume}
+                        className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+                      >
+                        Resume Course
+                      </button>
+                    </>
                   ) : (
                     <button
                       type="button"
@@ -271,8 +378,20 @@ const CourseDetail = () => {
                       Enroll Now
                     </button>
                   )}
-                  <p className="text-xs text-gray-500 mt-3">
-                    Enrollment saves to your current browser session. Sign in later for synced progress.
+                  <div>
+                    <div className="flex items-center justify-between text-xs text-gray-500">
+                      <span>Completion</span>
+                      <span>{completionProgress.completedCount}/{completionProgress.totalModules} modules</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+                      <div
+                        className="bg-blue-500 h-2 rounded-full"
+                        style={{ width: `${completionProgress.percent}%` }}
+                      />
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    Enrollment is tied to your account so progress syncs everywhere.
                   </p>
                 </div>
               </div>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { FileText, TrendingUp, Users, DollarSign } from 'lucide-react';
 
 import { pageContentsAPI } from '../services/api';
@@ -9,6 +10,20 @@ const Policies = () => {
   const [pageContent, setPageContent] = useState(() =>
     getDefaultPageContent(PAGE_CONTENT_SLUGS.POLICIES)
   );
+
+  const slugify = (value) =>
+    String(value || '')
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-');
+
+  const getPolicySlug = (policy) => {
+    if (!policy) return '';
+    const raw = policy.slug || policy.id || policy.title;
+    return slugify(raw);
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -184,9 +199,12 @@ const Policies = () => {
               </div>
 
               <div className="mt-4">
-                <button className="bg-primary-600 text-white px-6 py-2 rounded-lg hover:bg-primary-700 transition-colors font-medium">
+                <Link
+                  to={`/policies/${getPolicySlug(policy)}`}
+                  className="inline-flex items-center justify-center bg-primary-600 text-white px-6 py-2 rounded-lg hover:bg-primary-700 transition-colors font-medium"
+                >
                   View Details
-                </button>
+                </Link>
               </div>
             </div>
           );

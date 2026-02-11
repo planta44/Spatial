@@ -1,5 +1,6 @@
 const { DataTypes } = require('sequelize');
 const { sequelize } = require('../config/database');
+const Course = require('./Course');
 
 const SpatialProject = sequelize.define('SpatialProject', {
   id: {
@@ -120,5 +121,8 @@ const SpatialProject = sequelize.define('SpatialProject', {
     { fields: ['is_public'] }
   ]
 });
+
+SpatialProject.belongsTo(Course, { as: 'course', foreignKey: 'courseId' });
+Course.hasMany(SpatialProject, { as: 'spatialProjects', foreignKey: 'courseId' });
 
 module.exports = SpatialProject;

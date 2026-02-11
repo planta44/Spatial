@@ -1,11 +1,47 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Menu, X, Music, Waves, ArrowLeft } from 'lucide-react';
 
+const getStoredUser = () => {
+  try {
+    return JSON.parse(localStorage.getItem('user') || 'null');
+  } catch (error) {
+    return null;
+  }
+};
+
+const getAuthSnapshot = () => {
+  const token = localStorage.getItem('token');
+  const user = getStoredUser();
+  return { user, isAuthenticated: Boolean(token && user) };
+};
+
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(() =>
+    getAuthSnapshot().isAuthenticated
+  );
   const location = useLocation();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const syncAuth = () => {
+      setIsAuthenticated(getAuthSnapshot().isAuthenticated);
+    };
+
+    syncAuth();
+    window.addEventListener('auth-change', syncAuth);
+    window.addEventListener('storage', syncAuth);
+
+    return () => {
+      window.removeEventListener('auth-change', syncAuth);
+      window.removeEventListener('storage', syncAuth);
+    };
+  }, []);
+
+  const authItem = isAuthenticated
+    ? { name: 'Profile', path: '/profile' }
+    : { name: 'Login', path: '/admin' };
 
   const navItems = [
     { name: 'Home', path: '/' },
@@ -13,7 +49,7 @@ const Navbar = () => {
     { name: 'Teacher Training', path: '/teacher-training' },
     { name: 'Resources', path: '/resources' },
     { name: 'Policies', path: '/policies' },
-    { name: 'Login', path: '/admin' }
+    authItem
   ];
 
   const isActive = (path) => location.pathname === path;

@@ -143,9 +143,75 @@ const defaultResources = {
       description: 'Ready-to-use lesson plans for integrating AI composition and spatial audio.',
       icon: 'FileText',
       items: [
-        'Introduction to AI Music Tools',
-        'Spatial Audio Listening Exercise',
-        'Collaborative Composition Project',
+        {
+          id: 'intro-ai-music-tools',
+          title: 'Introduction to AI Music Tools',
+          slug: 'introduction-to-ai-music-tools',
+          summary: 'A classroom-ready primer on AI composition, safe tool use, and lesson framing.',
+          type: 'lesson',
+          duration: 45,
+          tags: ['ai', 'composition', 'foundations'],
+          content: `# Overview
+Introduce educators to the core capabilities of AI music tools while setting clear boundaries for ethical, student-centered use.
+
+## Lesson flow
+- Warm-up: listen and describe AI-generated clips
+- Guided demo: melody and harmony generation
+- Create: students iterate on 8-bar motifs
+- Share: peer feedback using a listening checklist
+
+## Teaching notes
+- Require attribution of AI prompts and settings
+- Pair AI drafts with human revisions
+- Use reflection journals to evaluate choices`,
+          downloadUrl: '',
+          externalUrl: '',
+        },
+        {
+          id: 'spatial-audio-listening-exercise',
+          title: 'Spatial Audio Listening Exercise',
+          slug: 'spatial-audio-listening-exercise',
+          summary: 'Guided listening protocol for space, movement, and depth in audio.',
+          type: 'exercise',
+          duration: 35,
+          tags: ['spatial-audio', 'listening'],
+          content: `# Overview
+Help students identify spatial cues such as distance, height, and motion using curated listening prompts.
+
+## Activity steps
+- Play three short excerpts with contrasting spatial placement
+- Ask students to map the sound positions on a simple stage diagram
+- Discuss how space changes the emotional impact
+
+## Extension
+- Invite students to remix a short clip with new spatial positioning
+- Reflect on how movement influences storytelling`,
+          downloadUrl: '',
+          externalUrl: '',
+        },
+        {
+          id: 'collaborative-composition-project',
+          title: 'Collaborative Composition Project',
+          slug: 'collaborative-composition-project',
+          summary: 'Team-based project brief with milestones, roles, and reflective prompts.',
+          type: 'project',
+          duration: 60,
+          tags: ['collaboration', 'project-based'],
+          content: `# Overview
+Student teams co-compose a short piece using AI tools and spatial audio techniques, then document their creative choices.
+
+## Milestones
+- Week 1: establish concept, roles, and prompt strategy
+- Week 2: draft composition and spatial plan
+- Week 3: refine, mix, and prepare presentation
+
+## Deliverables
+- Final audio export
+- Process journal with prompt history
+- Peer feedback summary`,
+          downloadUrl: '',
+          externalUrl: '',
+        },
       ],
     },
     {
@@ -154,9 +220,76 @@ const defaultResources = {
       description: 'Rubrics and assessment criteria for evaluating student work with AI tools.',
       icon: 'Download',
       items: [
-        'AI Composition Rubric',
-        'Spatial Audio Project Checklist',
-        'Academic Integrity Guidelines',
+        {
+          id: 'ai-composition-rubric',
+          title: 'AI Composition Rubric',
+          slug: 'ai-composition-rubric',
+          summary: 'Criteria for evaluating creativity, technique, and responsible AI usage.',
+          type: 'rubric',
+          duration: 20,
+          tags: ['assessment', 'rubric'],
+          content: `# Rubric categories
+- Musical originality and structure
+- AI tool integration and attribution
+- Spatial audio craft and clarity
+- Presentation quality
+
+## Scoring guidance
+- 4: exceeds expectations with clear artistic intent
+- 3: meets expectations with minor gaps
+- 2: developing skills or missing documentation
+- 1: incomplete or lacks understanding`,
+          downloadUrl: '',
+          externalUrl: '',
+        },
+        {
+          id: 'spatial-audio-project-checklist',
+          title: 'Spatial Audio Project Checklist',
+          slug: 'spatial-audio-project-checklist',
+          summary: 'Step-by-step checklist for planning and finishing spatial audio projects.',
+          type: 'checklist',
+          duration: 25,
+          tags: ['assessment', 'checklist'],
+          content: `# Pre-project
+- Confirm playback system and headphones
+- Set spatial goals for the composition
+- Document AI tools and prompt plan
+
+## Production
+- Balance levels and spatial movement
+- Test on at least two devices
+- Log revisions and feedback
+
+## Submission
+- Export final mix and session file
+- Include reflection and attribution notes`,
+          downloadUrl: '',
+          externalUrl: '',
+        },
+        {
+          id: 'academic-integrity-guidelines',
+          title: 'Academic Integrity Guidelines',
+          slug: 'academic-integrity-guidelines',
+          summary: 'Policy-aligned guidelines for ethical AI use and attribution.',
+          type: 'guidelines',
+          duration: 15,
+          tags: ['policy', 'integrity'],
+          content: `# Core expectations
+- Students must disclose AI tools and prompt inputs
+- AI output requires human revision and critique
+- Source materials must be cited in reflections
+
+## Prohibited practices
+- Submitting unedited AI output as original work
+- Omitting tool usage or prompt history
+- Using AI to bypass learning objectives
+
+## Support tips
+- Model transparent attribution in class
+- Use short reflection prompts after each project`,
+          downloadUrl: '',
+          externalUrl: '',
+        },
       ],
     },
     {
@@ -165,9 +298,54 @@ const defaultResources = {
       description: 'Step-by-step video guides for teachers and students.',
       icon: 'Play',
       items: [
-        'Setting Up Your First AI Project',
-        'Recording for Spatial Audio',
-        'Student Portfolio Examples',
+        {
+          id: 'setting-up-first-ai-project',
+          title: 'Setting Up Your First AI Project',
+          slug: 'setting-up-your-first-ai-project',
+          summary: 'Quick-start walkthrough for tools, files, and prompt setup.',
+          type: 'video',
+          duration: 12,
+          tags: ['video', 'setup'],
+          content: `# Quick-start agenda
+- Choose a simple theme and tempo
+- Generate a draft melody with AI assistance
+- Save prompt history and version notes
+- Export stems for spatial mixing`,
+          downloadUrl: '',
+          externalUrl: '',
+        },
+        {
+          id: 'recording-for-spatial-audio',
+          title: 'Recording for Spatial Audio',
+          slug: 'recording-for-spatial-audio',
+          summary: 'Mic placement, room prep, and capture tips for spatial mixes.',
+          type: 'video',
+          duration: 18,
+          tags: ['video', 'recording'],
+          content: `# Topics covered
+- Room preparation and noise control
+- Capturing clean mono sources
+- Building stereo and spatial layers
+- Quick checks before mixing`,
+          downloadUrl: '',
+          externalUrl: '',
+        },
+        {
+          id: 'student-portfolio-examples',
+          title: 'Student Portfolio Examples',
+          slug: 'student-portfolio-examples',
+          summary: 'Annotated exemplars to help students self-assess their work.',
+          type: 'video',
+          duration: 10,
+          tags: ['video', 'portfolio'],
+          content: `# What to highlight
+- Creative intent statement
+- Prompt history and AI contribution notes
+- Spatial mix screenshots or diagrams
+- Reflection on revisions`,
+          downloadUrl: '',
+          externalUrl: '',
+        },
       ],
     },
   ],
@@ -177,6 +355,7 @@ const defaultPolicies = [
   {
     id: 1,
     title: 'National Spatial Audio Integration Framework',
+    slug: 'national-spatial-audio-integration-framework',
     category: 'curriculum',
     scope: 'national',
     status: 'active',
@@ -185,10 +364,27 @@ const defaultPolicies = [
     budget: 5000000,
     startDate: '2023-01-15',
     description: 'Comprehensive framework for integrating spatial audio technology into music education curricula across Kenyan universities.',
+    keyPoints: [
+      'Curriculum integration roadmap',
+      'Equipment and lab standards',
+      'Faculty development plan',
+      'Assessment benchmarks',
+    ],
+    content: `# Overview
+This framework defines how spatial audio should be embedded into music technology programs across the country.
+
+## Implementation priorities
+- Align learning outcomes across universities
+- Establish shared studio and lab requirements
+- Provide teacher upskilling pathways
+
+## Monitoring
+Annual reviews will track adoption, outcomes, and resource gaps.`,
   },
   {
     id: 2,
     title: 'Teacher Training Certification Standards',
+    slug: 'teacher-training-certification-standards',
     category: 'training',
     scope: 'national',
     status: 'active',
@@ -197,10 +393,26 @@ const defaultPolicies = [
     budget: 2500000,
     startDate: '2023-03-10',
     description: 'Standardized certification requirements for music educators specializing in spatial audio technology.',
+    keyPoints: [
+      'Core pedagogy requirements',
+      'Spatial audio production skills',
+      'Assessment and evaluation standards',
+    ],
+    content: `# Certification focus
+The certification ensures educators can deliver spatial audio curricula with confidence and consistency.
+
+## Required modules
+- Spatial audio theory and listening skills
+- Production workflows and toolchains
+- Classroom-ready lesson planning
+
+## Renewal cadence
+Certifications are renewed every two years to reflect evolving tools.`,
   },
   {
     id: 3,
     title: 'Technology Infrastructure Guidelines',
+    slug: 'technology-infrastructure-guidelines',
     category: 'infrastructure',
     scope: 'institutional',
     status: 'under-review',
@@ -209,10 +421,26 @@ const defaultPolicies = [
     budget: 8000000,
     startDate: '2023-06-01',
     description: 'Guidelines for setting up and maintaining spatial audio labs and equipment in university settings.',
+    keyPoints: [
+      'Studio hardware baselines',
+      'Network and storage requirements',
+      'Maintenance and support plan',
+    ],
+    content: `# Infrastructure guidance
+These guidelines define minimum technical requirements for spatial audio labs.
+
+## Recommended setup
+- 24+ channel audio interfaces
+- Multichannel monitoring arrays
+- Dedicated rendering workstations
+
+## Support
+Institutions should allocate annual budgets for hardware refresh cycles.`,
   },
   {
     id: 4,
     title: 'Quality Assurance for Spatial Audio Programs',
+    slug: 'quality-assurance-for-spatial-audio-programs',
     category: 'quality-assurance',
     scope: 'regional',
     status: 'active',
@@ -221,6 +449,21 @@ const defaultPolicies = [
     budget: 1500000,
     startDate: '2023-04-20',
     description: 'Quality standards and assessment criteria for spatial audio training programs.',
+    keyPoints: [
+      'Program review cadence',
+      'Student outcomes measurement',
+      'Industry feedback loops',
+    ],
+    content: `# Quality assurance
+This policy defines how regional programs will be evaluated and improved.
+
+## Evaluation criteria
+- Curriculum alignment with national benchmarks
+- Student portfolio review standards
+- Graduate placement tracking
+
+## Reporting
+Regional reports are published each semester for transparency.`,
   },
 ];
 

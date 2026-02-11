@@ -48,6 +48,7 @@ const Admin = () => {
 
       localStorage.setItem('token', token);
       localStorage.setItem('user', JSON.stringify(user));
+      window.dispatchEvent(new Event('auth-change'));
       setIsLoggedIn(true);
       toast.success(`Welcome back, ${user.role === 'admin' ? 'Admin' : user.name}!`);
     } catch (error) {
@@ -61,6 +62,7 @@ const Admin = () => {
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    window.dispatchEvent(new Event('auth-change'));
     setIsLoggedIn(false);
     toast.success('Logged out successfully');
   };
