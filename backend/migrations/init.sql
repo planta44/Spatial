@@ -95,6 +95,9 @@ CREATE TABLE users (
     first_name VARCHAR(100) NOT NULL,
     last_name VARCHAR(100) NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
+    email_verified BOOLEAN DEFAULT false,
+    email_verification_token VARCHAR(255),
+    email_verification_expires TIMESTAMP,
     password VARCHAR(255) NOT NULL,
     role VARCHAR(50) DEFAULT 'student' CHECK (role IN ('student', 'teacher', 'admin', 'university_admin')),
     profile_info JSONB DEFAULT '{

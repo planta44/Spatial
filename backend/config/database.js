@@ -112,6 +112,20 @@ const ensureCoreSchema = async () => {
     }
   }
 
+  const userAlterations = [
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT false',
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verification_token VARCHAR(255)',
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verification_expires TIMESTAMP'
+  ];
+
+  for (const statement of userAlterations) {
+    try {
+      await sequelize.query(statement);
+    } catch (error) {
+      console.warn('⚠️  User schema update skipped:', error.message);
+    }
+  }
+
   const pageContentAlterations = [
     'ALTER TABLE page_contents ADD COLUMN IF NOT EXISTS slug VARCHAR(255)',
     'ALTER TABLE page_contents ADD COLUMN IF NOT EXISTS title VARCHAR(255)',
