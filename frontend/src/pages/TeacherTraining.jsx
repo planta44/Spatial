@@ -16,8 +16,13 @@ import { jsPDF } from 'jspdf';
 import toast from 'react-hot-toast';
 import { courseEnrollmentsAPI, pageContentsAPI } from '../services/api';
 import { PAGE_CONTENT_SLUGS, getDefaultPageContent } from '../utils/pageContentDefaults';
-import { addLocalEnrollment, getCourseId, readLocalEnrollments } from '../utils/courseEnrollment';
-import { isModuleComplete } from '../utils/courseProgress';
+import {
+  addLocalEnrollment,
+  getCourseId,
+  readLocalEnrollments,
+  removeLocalEnrollment
+} from '../utils/courseEnrollment';
+import { clearCourseProgress, getCompletionProgress, isModuleComplete } from '../utils/courseProgress';
 
 const TeacherTraining = () => {
   const location = useLocation();
@@ -212,22 +217,25 @@ const TeacherTraining = () => {
     return availableCourses
       .map((course) => {
         const courseId = String(getCourseId(course));
+        if (!courseId) return null;
         const enrollment = enrollmentMap.get(courseId);
-        return enrollment ? { course, enrollment, courseId } : null;
+        if (!enrollment) return null;
+        const modules = Array.isArray(course.modules) ? course.modules : [];
+        const completion = getCompletionProgress(courseId, modules.length);
+        const enrollmentProgress = Number(enrollment.progress) || 0;
+        const progressValue = Math.max(enrollmentProgress, completion.percent);
+        const isCompleted = enrollment.status === 'completed' || progressValue >= 100;
+        return { course, enrollment, courseId, progressValue, isCompleted };
       })
       .filter(Boolean);
   }, [availableCourses, enrollmentMap]);
 
   const completedCourseItems = useMemo(() => {
-    return enrolledCourseItems.filter(({ enrollment }) =>
-      enrollment.status === 'completed' || Number(enrollment.progress) >= 100
-    );
+    return enrolledCourseItems.filter(({ isCompleted }) => isCompleted);
   }, [enrolledCourseItems]);
 
   const activeCourseItems = useMemo(() => {
-    return enrolledCourseItems.filter(({ enrollment }) =>
-      !(enrollment.status === 'completed' || Number(enrollment.progress) >= 100)
-    );
+    return enrolledCourseItems.filter(({ isCompleted }) => !isCompleted);
   }, [enrolledCourseItems]);
 
   const certificateItems = useMemo(() => {
@@ -236,8 +244,8 @@ const TeacherTraining = () => {
 
   const averageProgress = useMemo(() => {
     if (!enrolledCourseItems.length) return 0;
-    const total = enrolledCourseItems.reduce((sum, { enrollment }) =>
-      sum + (Number(enrollment.progress) || 0), 0);
+    const total = enrolledCourseItems.reduce((sum, { progressValue }) =>
+      sum + (Number(progressValue) || 0), 0);
     return Math.round(total / enrolledCourseItems.length);
   }, [enrolledCourseItems]);
 
@@ -277,6 +285,26 @@ const TeacherTraining = () => {
     }
 
     navigate(`/courses/${courseId}`);
+  };
+
+  const handleUnenroll = async (courseId) => {
+    if (!courseId) return;
+    const confirmed = window.confirm('Are you sure you want to unenroll from this course?');
+    if (!confirmed) return;
+    const token = localStorage.getItem('token');
+
+    try {
+      if (token) {
+        await courseEnrollmentsAPI.unenroll(courseId);
+      }
+      removeLocalEnrollment(courseId);
+      clearCourseProgress(courseId);
+      setEnrollments((prev) => prev.filter((enrollment) => String(enrollment.courseId) !== courseId));
+      toast.success('You have been unenrolled from this course.');
+    } catch (error) {
+      console.error('Failed to unenroll:', error);
+      toast.error(error.response?.data?.message || 'Unable to unenroll. Please try again.');
+    }
   };
 
   const handleCourseCta = (course, isEnrolled) => {
@@ -641,37 +669,49 @@ const TeacherTraining = () => {
               </button>
             </div>
           ) : (
-            activeCourseItems.map(({ course, enrollment, courseId }) => {
-              const progressValue = Math.max(0, Math.min(100, Number(enrollment.progress) || 0));
+            activeCourseItems.map(({ course, enrollment, courseId, progressValue }) => {
+              const normalizedProgress = Math.max(0, Math.min(100, Number(progressValue) || 0));
               const modules = Array.isArray(course.modules) ? course.modules : [];
-              const nextModuleIndex = modules.length
-                ? Math.min(modules.length - 1, Math.floor((progressValue / 100) * modules.length))
-                : -1;
-              const nextModule = nextModuleIndex >= 0 ? modules[nextModuleIndex] : null;
+              let nextModule = null;
+              for (let index = 0; index < modules.length; index += 1) {
+                if (!isModuleComplete(courseId, getModuleId(modules[index], index))) {
+                  nextModule = modules[index];
+                  break;
+                }
+              }
               const lastAccessed = enrollment.lastAccessedAt ? new Date(enrollment.lastAccessedAt) : null;
               const lastAccessedText = lastAccessed && !Number.isNaN(lastAccessed.getTime())
                 ? lastAccessed.toLocaleDateString()
                 : null;
-              const ctaLabel = progressValue > 0 ? 'Resume' : 'Start';
+              const ctaLabel = normalizedProgress > 0 ? 'Resume' : 'Start';
 
               return (
                 <div key={courseId} className="border rounded-lg p-4 bg-white">
                   <div className="flex flex-wrap justify-between items-start gap-3 mb-3">
                     <div>
                       <h5 className="font-semibold text-gray-900">{course.title}</h5>
-                      <p className="text-sm text-gray-600">Progress: {progressValue}% complete</p>
+                      <p className="text-sm text-gray-600">Progress: {normalizedProgress}% complete</p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => handleContinue(course)}
-                      className="flex items-center gap-2 bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600"
-                    >
-                      <Play size={14} />
-                      {ctaLabel}
-                    </button>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleContinue(course)}
+                        className="flex items-center gap-2 bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600"
+                      >
+                        <Play size={14} />
+                        {ctaLabel}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleUnenroll(courseId)}
+                        className="px-3 py-1 rounded text-sm border border-red-200 text-red-600 hover:bg-red-50"
+                      >
+                        Unenroll
+                      </button>
+                    </div>
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-2 mb-3">
-                    <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${progressValue}%` }} />
+                    <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${normalizedProgress}%` }} />
                   </div>
                   <div className="flex flex-wrap gap-4 text-sm text-gray-600">
                     {nextModule ? (

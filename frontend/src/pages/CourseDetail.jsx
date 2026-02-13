@@ -99,22 +99,23 @@ const CourseDetail = () => {
     const loadEnrollmentStatus = async () => {
       if (!id) return;
       const token = localStorage.getItem('token');
+      const resolvedCourseId = String(getCourseId(course) || id || '');
 
       if (token) {
         try {
           const response = await courseEnrollmentsAPI.getMine();
           const payload = response?.data || {};
           const enrollments = payload.enrollments || payload.data?.enrollments || [];
-          const enrolled = enrollments.some(
-            (enrollment) => String(enrollment.courseId) === String(id)
+          const enrolled = enrollments.some((enrollment) =>
+            matchesCourseId(course || { id: resolvedCourseId }, enrollment.courseId)
           );
 
           if (isMounted) {
             setIsEnrolled(enrolled);
           }
 
-          if (enrolled) {
-            addLocalEnrollment(id);
+          if (enrolled && resolvedCourseId) {
+            addLocalEnrollment(resolvedCourseId);
           }
           return;
         } catch (error) {
@@ -123,7 +124,7 @@ const CourseDetail = () => {
 
         const localIds = readLocalEnrollments();
         if (isMounted) {
-          setIsEnrolled(localIds.includes(id));
+          setIsEnrolled(localIds.includes(resolvedCourseId || id));
         }
         return;
       }
@@ -138,26 +139,34 @@ const CourseDetail = () => {
     return () => {
       isMounted = false;
     };
-  }, [id]);
+  }, [course, id]);
 
   const handleEnroll = async () => {
     if (!course || !id) return;
+    const resolvedCourseId = String(getCourseId(course) || id || '');
+    if (!resolvedCourseId) return;
     const token = localStorage.getItem('token');
 
     if (!token) {
       toast.error('Please sign in or create an account to enroll.');
-      navigate('/admin?mode=register');
+      navigate('/admin?mode=register', { state: { from: `/courses/${resolvedCourseId}` } });
       return;
     }
 
     try {
-      await courseEnrollmentsAPI.enroll(id);
-      addLocalEnrollment(id);
+      await courseEnrollmentsAPI.enroll(resolvedCourseId);
+      addLocalEnrollment(resolvedCourseId);
       setIsEnrolled(true);
       toast.success('You are now enrolled in this course.');
     } catch (error) {
       console.error('Enrollment failed:', error);
-      toast.error('Online enrollment failed. Please try again.');
+      const status = error.response?.status;
+      if (status === 401) {
+        toast.error('Session expired. Please sign in again.');
+        navigate('/admin?mode=register', { state: { from: `/courses/${resolvedCourseId}` } });
+        return;
+      }
+      toast.error(error.response?.data?.message || 'Online enrollment failed. Please try again.');
     }
   };
 
@@ -198,11 +207,12 @@ const CourseDetail = () => {
   const modules = Array.isArray(course.modules) ? course.modules : [];
   const courseId = String(getCourseId(course) || id || '');
   const completionProgress = getCompletionProgress(courseId, modules.length);
+  const hasCompletedCourse = completionProgress.percent >= 100;
   const prerequisites = Array.isArray(course.prerequisites) ? course.prerequisites : [];
 
   const handleOpenModule = (moduleId) => {
     if (!moduleId) return;
-    if (!isEnrolled && !isPreview) {
+    if (!isEnrolled && !isPreview && !hasCompletedCourse) {
       const token = localStorage.getItem('token');
       toast.error(token
         ? 'Please enroll to access modules.'

@@ -44,7 +44,8 @@ const ensureAdminUser = async () => {
       name: adminName,
       password: adminPassword,
       role: 'admin',
-      isActive: true
+      isActive: true,
+      emailVerified: true
     }
   });
 
@@ -61,13 +62,15 @@ const ensureAdminUser = async () => {
       needsSave = true;
     }
 
-    if (shouldResetPassword) {
-      admin.password = adminPassword;
+    if (!admin.emailVerified) {
+      admin.emailVerified = true;
+      admin.emailVerificationToken = null;
+      admin.emailVerificationExpires = null;
       needsSave = true;
     }
 
-    if (!admin.name) {
-      admin.name = adminName;
+    if (shouldResetPassword) {
+      admin.password = adminPassword;
       needsSave = true;
     }
 
@@ -91,12 +94,26 @@ connectDB()
   });
 
 // Security middleware
+app.set('trust proxy', 1);
 app.use(helmet());
 
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100 // limit each IP to 100 requests per windowMs
+  max: Number(process.env.API_RATE_LIMIT_MAX) || 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many requests, please try again later.' },
+  skip: (req) => {
+    const path = req.path || '';
+    const originalUrl = req.originalUrl || '';
+    return (
+      path === '/health' ||
+      path === '/transcription/health' ||
+      originalUrl.includes('/api/health') ||
+      originalUrl.includes('/api/transcription/health')
+    );
+  }
 });
 app.use('/api/', limiter);
 

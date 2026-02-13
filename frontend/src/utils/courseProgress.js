@@ -56,6 +56,16 @@ export const markModuleComplete = (courseId, moduleId) => {
   return nextEntry;
 };
 
+export const clearCourseProgress = (courseId) => {
+  if (!courseId) return;
+  const allProgress = readCourseProgress();
+  if (!allProgress || typeof allProgress !== 'object') return;
+  if (!Object.prototype.hasOwnProperty.call(allProgress, String(courseId))) return;
+  const nextProgress = { ...allProgress };
+  delete nextProgress[String(courseId)];
+  saveCourseProgress(nextProgress);
+};
+
 export const getCompletionProgress = (courseId, totalModules = 0) => {
   const entry = getCourseProgress(courseId);
   const completedCount = entry.completedModules.length;

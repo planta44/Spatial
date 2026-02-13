@@ -347,9 +347,14 @@ const CourseModuleDetail = () => {
     };
   }, [moduleItem]);
 
-  const quizEnabled = moduleItem?.type === 'quiz' || quizData?.enabled;
-  const allowAccess = isEnrolled || isPreview;
-  const isReadOnly = isComplete;
+  const quizEnabled =
+    moduleItem?.type === 'quiz' ||
+    quizData?.enabled ||
+    (quizData?.questions?.length || 0) > 0;
+  const completionProgress = getCompletionProgress(resolvedCourseId, modules.length);
+  const hasCompletedCourse = completionProgress.percent >= 100;
+  const allowAccess = isEnrolled || isPreview || hasCompletedCourse;
+  const isReadOnly = isComplete || hasCompletedCourse;
   const allowQuizInteraction = allowAccess && !isReadOnly;
 
   useEffect(() => {
@@ -473,7 +478,6 @@ const CourseModuleDetail = () => {
     }
   }, [handleSubmitQuiz, quizEnabled, quizResult?.submitted, timeLeft]);
 
-  const completionProgress = getCompletionProgress(resolvedCourseId, modules.length);
   const resources = Array.isArray(moduleItem?.resources) ? moduleItem.resources : [];
   const contentBlocks = Array.isArray(moduleItem?.contentBlocks) ? moduleItem.contentBlocks : [];
   const previousModule = moduleIndex > 0 ? modules[moduleIndex - 1] : null;
@@ -815,7 +819,7 @@ const CourseModuleDetail = () => {
               <CheckCircle2 className={`h-4 w-4 ${isComplete ? 'text-green-500' : 'text-gray-300'}`} />
               {isComplete ? 'Completed' : 'Not completed yet'}
             </div>
-            {!quizEnabled && !isComplete && (
+            {!quizEnabled && !isComplete && !hasCompletedCourse && (
               <button
                 type="button"
                 onClick={handleMarkComplete}
