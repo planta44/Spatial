@@ -5,6 +5,19 @@ import toast from 'react-hot-toast';
 import { pageContentsAPI, resourcesAPI } from '../services/api';
 import { PAGE_CONTENT_OPTIONS, PAGE_CONTENT_SLUGS, getDefaultPageContent } from '../utils/pageContentDefaults';
 
+const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5001/api')
+  .replace(/\/+$/, '')
+  .replace(/\/+api$/, '');
+
+const resolveAssetUrl = (url) => {
+  if (!url) return '';
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
+  }
+  const normalized = url.startsWith('/') ? url : `/${url}`;
+  return `${API_BASE_URL}${normalized}`;
+};
+
 const AdminPageContent = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -230,6 +243,9 @@ const AdminPageContent = () => {
 
   const formatCsv = (value) => (Array.isArray(value) ? value.join(', ') : '');
 
+  const resolveTemplateText = (value, replacements) =>
+    String(value || '').replace(/\{\{(\w+)\}\}/g, (_, key) => replacements[key] ?? '');
+
   const slugify = (value) =>
     String(value || '')
       .toLowerCase()
@@ -432,6 +448,60 @@ const AdminPageContent = () => {
     }
   };
 
+  const handleCertificateAssetUpload = async (field, file) => {
+    if (!file) return;
+    try {
+      setUploading(true);
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await resourcesAPI.uploadAsset(formData);
+      const payload = response?.data || {};
+      const url = payload.url || payload.data?.url || '';
+      if (!url) {
+        throw new Error('Upload failed');
+      }
+      updateContentField(field, url);
+      toast.success('Image uploaded');
+    } catch (error) {
+      console.error('Upload failed:', error);
+      toast.error('Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const addCertificateTemplate = () => {
+    const newTemplate = {
+      id: `template-${Date.now()}`,
+      name: 'New Template',
+      accentColor: '#1d4ed8',
+      secondaryColor: '#3b82f6',
+      backgroundColor: '#f8fafc',
+      borderColor: '#1e40af'
+    };
+
+    setContent((prev) => {
+      const templates = [...(prev.templates || []), newTemplate];
+      return {
+        ...prev,
+        templates,
+        activeTemplateId: prev.activeTemplateId || newTemplate.id
+      };
+    });
+  };
+
+  const removeCertificateTemplate = (index) => {
+    setContent((prev) => {
+      const templates = [...(prev.templates || [])];
+      const removed = templates.splice(index, 1)[0];
+      const nextActiveId =
+        removed?.id && prev.activeTemplateId === removed.id
+          ? templates[0]?.id || ''
+          : prev.activeTemplateId;
+      return { ...prev, templates, activeTemplateId: nextActiveId };
+    });
+  };
+
   const updateModule = (courseIndex, moduleIndex, updater) => {
     setContent((prev) => {
       const courses = [...(prev.courses || [])];
@@ -487,6 +557,80 @@ const AdminPageContent = () => {
       blocks.splice(blockIndex, 1);
       return { ...current, contentBlocks: blocks };
     });
+
+  const getPlainBlockText = (courseIndex, moduleIndex, blockIndex) => {
+    const course = (content.courses || [])[courseIndex] || {};
+    const modules = Array.isArray(course.modules) ? course.modules : [];
+    const module = modules[moduleIndex] || {};
+    const blocks = Array.isArray(module.contentBlocks) ? module.contentBlocks : [];
+    const block = blocks[blockIndex] || {};
+    return block.text || '';
+  };
+
+  const applyPlainSheetFormat = (courseIndex, moduleIndex, blockIndex, format) => {
+    if (typeof document === 'undefined') return;
+    const textareaId = `plain-block-${courseIndex}-${moduleIndex}-${blockIndex}`;
+    const textarea = document.getElementById(textareaId);
+    const currentValue = textarea?.value ?? getPlainBlockText(courseIndex, moduleIndex, blockIndex);
+    const selectionStart = textarea?.selectionStart ?? currentValue.length;
+    const selectionEnd = textarea?.selectionEnd ?? currentValue.length;
+    const selectedText = currentValue.slice(selectionStart, selectionEnd);
+
+    let insertText = '';
+    let nextValue = currentValue;
+    let nextSelectionStart = selectionStart;
+    let nextSelectionEnd = selectionStart;
+
+    switch (format) {
+      case 'heading':
+        insertText = `# ${selectedText || 'Heading'}`;
+        nextSelectionStart = selectionStart + insertText.length;
+        nextSelectionEnd = nextSelectionStart;
+        break;
+      case 'subheading':
+        insertText = `## ${selectedText || 'Subheading'}`;
+        nextSelectionStart = selectionStart + insertText.length;
+        nextSelectionEnd = nextSelectionStart;
+        break;
+      case 'list':
+        insertText = selectedText
+          ? selectedText
+              .split('\n')
+              .map((line) => line.trim())
+              .filter(Boolean)
+              .map((line) => `- ${line.replace(/^[-*\d.\s]+/, '')}`)
+              .join('\n')
+          : '- Item 1\n- Item 2';
+        nextSelectionStart = selectionStart + insertText.length;
+        nextSelectionEnd = nextSelectionStart;
+        break;
+      case 'bold':
+        insertText = selectedText ? `**${selectedText}**` : '**bold text**';
+        nextSelectionStart = selectionStart + 2;
+        nextSelectionEnd = nextSelectionStart + (selectedText || 'bold text').length;
+        break;
+      case 'italic':
+        insertText = selectedText ? `*${selectedText}*` : '*italic text*';
+        nextSelectionStart = selectionStart + 1;
+        nextSelectionEnd = nextSelectionStart + (selectedText || 'italic text').length;
+        break;
+      default:
+        insertText = selectedText;
+        nextSelectionStart = selectionEnd;
+        nextSelectionEnd = selectionEnd;
+    }
+
+    nextValue =
+      currentValue.slice(0, selectionStart) + insertText + currentValue.slice(selectionEnd);
+
+    updateModuleContentBlockField(courseIndex, moduleIndex, blockIndex, 'text', nextValue);
+
+    requestAnimationFrame(() => {
+      if (!textarea) return;
+      textarea.focus();
+      textarea.setSelectionRange(nextSelectionStart, nextSelectionEnd);
+    });
+  };
 
   const addModuleResource = (courseIndex, moduleIndex) =>
     updateModule(courseIndex, moduleIndex, (current) => ({
@@ -1998,7 +2142,55 @@ const AdminPageContent = () => {
 
                                     {block.type === 'plain' && (
                                       <div className="space-y-2">
+                                        <div className="flex flex-wrap gap-2">
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              applyPlainSheetFormat(index, moduleIndex, blockIndex, 'heading')
+                                            }
+                                            className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-md hover:bg-gray-200"
+                                          >
+                                            H1
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              applyPlainSheetFormat(index, moduleIndex, blockIndex, 'subheading')
+                                            }
+                                            className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-md hover:bg-gray-200"
+                                          >
+                                            H2
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              applyPlainSheetFormat(index, moduleIndex, blockIndex, 'list')
+                                            }
+                                            className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-md hover:bg-gray-200"
+                                          >
+                                            List
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              applyPlainSheetFormat(index, moduleIndex, blockIndex, 'bold')
+                                            }
+                                            className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-md hover:bg-gray-200"
+                                          >
+                                            Bold
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              applyPlainSheetFormat(index, moduleIndex, blockIndex, 'italic')
+                                            }
+                                            className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-md hover:bg-gray-200"
+                                          >
+                                            Italic
+                                          </button>
+                                        </div>
                                         <textarea
+                                          id={`plain-block-${index}-${moduleIndex}-${blockIndex}`}
                                           rows={8}
                                           value={block.text || ''}
                                           onChange={(event) =>
@@ -3022,6 +3214,563 @@ const AdminPageContent = () => {
     </div>
   );
 
+  const renderCertificateSettingsEditor = () => {
+    const templates = Array.isArray(content.templates) ? content.templates : [];
+    const badges = Array.isArray(content.badges) ? content.badges : [];
+    const additionalLines = Array.isArray(content.additionalLines) ? content.additionalLines : [];
+    const activeTemplate =
+      templates.find((template) => template.id === content.activeTemplateId) || templates[0] || {};
+    const showSignature = content.showSignature !== false;
+    const showStamp = content.showStamp !== false;
+    const showBadges = content.showBadges !== false;
+    const showBadgeLabels = content.showBadgeLabels !== false;
+    const previewDate = new Date().toLocaleDateString();
+    const previewReplacements = {
+      name: 'Alex Johnson',
+      course: 'Sample Course',
+      date: previewDate,
+      issuer: content.issuerName || ''
+    };
+    const previewTitle = resolveTemplateText(
+      content.certificateTitle || 'Certificate of Achievement',
+      previewReplacements
+    );
+    const previewPresentedTo = resolveTemplateText(
+      content.presentedToText || 'This certificate is proudly presented to',
+      previewReplacements
+    );
+    const previewCompletion = resolveTemplateText(
+      content.completionText || 'for successfully completing the professional training course',
+      previewReplacements
+    );
+    const previewProgram = resolveTemplateText(
+      content.programName || 'Spatial AI Music Teacher Training',
+      previewReplacements
+    );
+    const previewFooter = resolveTemplateText(content.footerText || 'Awarded on {{date}}', previewReplacements);
+    const previewSignatoryName = resolveTemplateText(content.signatoryName || 'Program Director', previewReplacements);
+    const previewSignatoryTitle = resolveTemplateText(content.signatoryTitle || '', previewReplacements);
+    const previewIssuerName = resolveTemplateText(content.issuerName || '', previewReplacements);
+    const previewStampText = resolveTemplateText(content.stampText || '', previewReplacements);
+    const previewIssuerLocation = resolveTemplateText(content.issuerLocation || '', previewReplacements);
+    const signatureUrl = resolveAssetUrl(content.signatureImageUrl);
+    const stampUrl = resolveAssetUrl(content.stampImageUrl);
+    const enabledBadges = badges.filter((badge) => badge?.enabled);
+
+    return (
+      <div className="space-y-8">
+        <section className="space-y-4">
+          <h3 className="text-lg font-semibold text-gray-900">Certificate Copy</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Certificate Title</label>
+              <input
+                type="text"
+                value={content.certificateTitle || ''}
+                onChange={(event) => updateContentField('certificateTitle', event.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Program Name</label>
+              <input
+                type="text"
+                value={content.programName || ''}
+                onChange={(event) => updateContentField('programName', event.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Presented To Line</label>
+            <input
+              type="text"
+              value={content.presentedToText || ''}
+              onChange={(event) => updateContentField('presentedToText', event.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Completion Line</label>
+            <input
+              type="text"
+              value={content.completionText || ''}
+              onChange={(event) => updateContentField('completionText', event.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Footer Text</label>
+            <input
+              type="text"
+              value={content.footerText || ''}
+              onChange={(event) => updateContentField('footerText', event.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2"
+            />
+          </div>
+          <p className="text-xs text-gray-500">Use {{name}}, {{course}}, {{date}}, or {{issuer}} placeholders.</p>
+        </section>
+
+        <section className="space-y-4">
+          <h3 className="text-lg font-semibold text-gray-900">Issuer & Signatory</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Signatory Name</label>
+              <input
+                type="text"
+                value={content.signatoryName || ''}
+                onChange={(event) => updateContentField('signatoryName', event.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Signatory Title</label>
+              <input
+                type="text"
+                value={content.signatoryTitle || ''}
+                onChange={(event) => updateContentField('signatoryTitle', event.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Issuer Name</label>
+              <input
+                type="text"
+                value={content.issuerName || ''}
+                onChange={(event) => updateContentField('issuerName', event.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Issuer Location</label>
+              <input
+                type="text"
+                value={content.issuerLocation || ''}
+                onChange={(event) => updateContentField('issuerLocation', event.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Stamp Text</label>
+              <input
+                type="text"
+                value={content.stampText || ''}
+                onChange={(event) => updateContentField('stampText', event.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+              />
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-4">
+          <h3 className="text-lg font-semibold text-gray-900">Certificate Elements</h3>
+          <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={showSignature}
+                onChange={(event) => updateContentField('showSignature', event.target.checked)}
+                className="h-4 w-4"
+              />
+              Show signature
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={showStamp}
+                onChange={(event) => updateContentField('showStamp', event.target.checked)}
+                className="h-4 w-4"
+              />
+              Show stamp
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={showBadges}
+                onChange={(event) => updateContentField('showBadges', event.target.checked)}
+                className="h-4 w-4"
+              />
+              Show badges
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={showBadgeLabels}
+                onChange={(event) => updateContentField('showBadgeLabels', event.target.checked)}
+                className="h-4 w-4"
+              />
+              Show badge labels
+            </label>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700">Signature Image</label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="text"
+                  value={content.signatureImageUrl || ''}
+                  onChange={(event) => updateContentField('signatureImageUrl', event.target.value)}
+                  className="flex-1 border border-gray-300 rounded-lg px-3 py-2"
+                  placeholder="Paste signature image URL"
+                />
+                <label className="inline-flex items-center gap-2 text-xs bg-gray-100 px-3 py-2 rounded-lg cursor-pointer">
+                  <Upload className="h-4 w-4" />
+                  Upload
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(event) =>
+                      handleCertificateAssetUpload('signatureImageUrl', event.target.files?.[0])
+                    }
+                    className="hidden"
+                    disabled={uploading}
+                  />
+                </label>
+              </div>
+              {signatureUrl && (
+                <img
+                  src={signatureUrl}
+                  alt="Signature preview"
+                  className="h-16 object-contain border border-gray-200 rounded-lg p-2"
+                />
+              )}
+            </div>
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700">Stamp Image</label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="text"
+                  value={content.stampImageUrl || ''}
+                  onChange={(event) => updateContentField('stampImageUrl', event.target.value)}
+                  className="flex-1 border border-gray-300 rounded-lg px-3 py-2"
+                  placeholder="Paste stamp image URL"
+                />
+                <label className="inline-flex items-center gap-2 text-xs bg-gray-100 px-3 py-2 rounded-lg cursor-pointer">
+                  <Upload className="h-4 w-4" />
+                  Upload
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(event) => handleCertificateAssetUpload('stampImageUrl', event.target.files?.[0])}
+                    className="hidden"
+                    disabled={uploading}
+                  />
+                </label>
+              </div>
+              {stampUrl && (
+                <img
+                  src={stampUrl}
+                  alt="Stamp preview"
+                  className="h-16 object-contain border border-gray-200 rounded-lg p-2"
+                />
+              )}
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h3 className="text-lg font-semibold text-gray-900">Templates</h3>
+            <button
+              type="button"
+              onClick={addCertificateTemplate}
+              className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700"
+            >
+              <Plus className="h-4 w-4" />
+              Add template
+            </button>
+          </div>
+          {templates.length === 0 ? (
+            <p className="text-sm text-gray-500">Add certificate templates to choose layouts.</p>
+          ) : (
+            <div className="space-y-4">
+              {templates.map((template, templateIndex) => (
+                <div key={template.id || templateIndex} className="border border-gray-200 rounded-lg p-4 space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <label className="flex items-center gap-2 text-sm text-gray-600">
+                      <input
+                        type="radio"
+                        name="active-template"
+                        checked={content.activeTemplateId === template.id}
+                        onChange={() => updateContentField('activeTemplateId', template.id)}
+                        className="h-4 w-4"
+                      />
+                      Active template
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => removeCertificateTemplate(templateIndex)}
+                      disabled={templates.length <= 1}
+                      className="p-1 text-red-500 hover:text-red-600 disabled:opacity-40"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    value={template.name || ''}
+                    onChange={(event) =>
+                      updateListItemField('templates', templateIndex, 'name', event.target.value)
+                    }
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                    placeholder="Template name"
+                  />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {[
+                      { key: 'accentColor', label: 'Accent Color' },
+                      { key: 'secondaryColor', label: 'Secondary Color' },
+                      { key: 'backgroundColor', label: 'Background Color' },
+                      { key: 'borderColor', label: 'Border Color' }
+                    ].map((item) => (
+                      <div key={item.key} className="space-y-1">
+                        <label className="block text-xs font-medium text-gray-500">{item.label}</label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="color"
+                            value={template[item.key] || '#1d4ed8'}
+                            onChange={(event) =>
+                              updateListItemField('templates', templateIndex, item.key, event.target.value)
+                            }
+                            className="h-10 w-12 border border-gray-300 rounded"
+                          />
+                          <input
+                            type="text"
+                            value={template[item.key] || ''}
+                            onChange={(event) =>
+                              updateListItemField('templates', templateIndex, item.key, event.target.value)
+                            }
+                            className="flex-1 border border-gray-300 rounded-lg px-3 py-2"
+                            placeholder="#1d4ed8"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h3 className="text-lg font-semibold text-gray-900">Badges</h3>
+            <button
+              type="button"
+              onClick={() =>
+                addListItem('badges', {
+                  id: `badge-${Date.now()}`,
+                  label: 'New Badge',
+                  enabled: true,
+                  backgroundColor: '#dbeafe',
+                  textColor: '#1d4ed8'
+                })
+              }
+              className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700"
+            >
+              <Plus className="h-4 w-4" />
+              Add badge
+            </button>
+          </div>
+          {badges.length === 0 ? (
+            <p className="text-sm text-gray-500">Add badges to highlight achievements.</p>
+          ) : (
+            <div className="space-y-4">
+              {badges.map((badge, badgeIndex) => (
+                <div key={badge.id || badgeIndex} className="border border-gray-200 rounded-lg p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="flex items-center gap-2 text-sm text-gray-600">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(badge.enabled)}
+                        onChange={(event) =>
+                          updateListItemField('badges', badgeIndex, 'enabled', event.target.checked)
+                        }
+                        className="h-4 w-4"
+                      />
+                      Enabled
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => removeListItem('badges', badgeIndex)}
+                      className="p-1 text-red-500 hover:text-red-600"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    value={badge.label || ''}
+                    onChange={(event) => updateListItemField('badges', badgeIndex, 'label', event.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                    placeholder="Badge label"
+                  />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {[
+                      { key: 'backgroundColor', label: 'Background Color' },
+                      { key: 'textColor', label: 'Text Color' }
+                    ].map((item) => (
+                      <div key={item.key} className="space-y-1">
+                        <label className="block text-xs font-medium text-gray-500">{item.label}</label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="color"
+                            value={badge[item.key] || '#1d4ed8'}
+                            onChange={(event) =>
+                              updateListItemField('badges', badgeIndex, item.key, event.target.value)
+                            }
+                            className="h-10 w-12 border border-gray-300 rounded"
+                          />
+                          <input
+                            type="text"
+                            value={badge[item.key] || ''}
+                            onChange={(event) =>
+                              updateListItemField('badges', badgeIndex, item.key, event.target.value)
+                            }
+                            className="flex-1 border border-gray-300 rounded-lg px-3 py-2"
+                            placeholder="#1d4ed8"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h3 className="text-lg font-semibold text-gray-900">Additional Lines</h3>
+            <button
+              type="button"
+              onClick={() => addListItem('additionalLines', { id: `line-${Date.now()}`, label: '', value: '' })}
+              className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700"
+            >
+              <Plus className="h-4 w-4" />
+              Add line
+            </button>
+          </div>
+          {additionalLines.length === 0 ? (
+            <p className="text-sm text-gray-500">Add extra certificate metadata (cohort, ID, etc.).</p>
+          ) : (
+            <div className="space-y-3">
+              {additionalLines.map((line, lineIndex) => (
+                <div key={line.id || lineIndex} className="flex flex-wrap items-center gap-3">
+                  <input
+                    type="text"
+                    value={line.label || ''}
+                    onChange={(event) => updateListItemField('additionalLines', lineIndex, 'label', event.target.value)}
+                    className="flex-1 border border-gray-300 rounded-lg px-3 py-2"
+                    placeholder="Label"
+                  />
+                  <input
+                    type="text"
+                    value={line.value || ''}
+                    onChange={(event) => updateListItemField('additionalLines', lineIndex, 'value', event.target.value)}
+                    className="flex-1 border border-gray-300 rounded-lg px-3 py-2"
+                    placeholder="Value"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeListItem('additionalLines', lineIndex)}
+                    className="p-1 text-red-500 hover:text-red-600"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="space-y-4">
+          <h3 className="text-lg font-semibold text-gray-900">Preview</h3>
+          <div
+            className="border rounded-xl p-6 space-y-4"
+            style={{
+              backgroundColor: activeTemplate.backgroundColor || '#f8fafc',
+              borderColor: activeTemplate.borderColor || '#1e40af'
+            }}
+          >
+            <div className="h-2 rounded-full" style={{ backgroundColor: activeTemplate.accentColor || '#1d4ed8' }} />
+            <div className="text-center space-y-2">
+              <h4 className="text-2xl font-bold" style={{ color: activeTemplate.accentColor || '#1d4ed8' }}>
+                {previewTitle}
+              </h4>
+              <p className="text-sm text-gray-600">{previewPresentedTo}</p>
+              <p className="text-xl font-semibold text-gray-900">Alex Johnson</p>
+              <p className="text-sm text-gray-600">{previewCompletion}</p>
+              <p className="text-lg font-semibold text-gray-900">{previewProgram}</p>
+              {additionalLines.map((line) => {
+                const text = [line.label, line.value].filter(Boolean).join(' ');
+                return text ? (
+                  <p key={line.id || text} className="text-xs text-gray-500">
+                    {text}
+                  </p>
+                ) : null;
+              })}
+              <p className="text-sm text-gray-500">{previewFooter}</p>
+            </div>
+
+            {showBadges && enabledBadges.length > 0 && (
+              <div className="flex flex-wrap justify-center gap-2">
+                {enabledBadges.map((badge) => (
+                  <span
+                    key={badge.id || badge.label}
+                    className="text-xs font-semibold px-3 py-1 rounded-full"
+                    style={{
+                      backgroundColor: badge.backgroundColor || '#dbeafe',
+                      color: badge.textColor || '#1d4ed8',
+                      minWidth: showBadgeLabels ? 'auto' : '24px'
+                    }}
+                  >
+                    {showBadgeLabels ? badge.label : ''}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-end justify-between gap-6 pt-4">
+              <div className="flex-1 text-center">
+                {showSignature && (
+                  <div className="space-y-1">
+                    {signatureUrl ? (
+                      <img src={signatureUrl} alt="Signature" className="h-12 mx-auto object-contain" />
+                    ) : (
+                      <div className="h-px bg-gray-300 w-40 mx-auto" />
+                    )}
+                    <p className="text-sm font-medium text-gray-700">{previewSignatoryName}</p>
+                    {previewSignatoryTitle && (
+                      <p className="text-xs text-gray-500">{previewSignatoryTitle}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+              <div className="w-28 text-center">
+                {showStamp && (
+                  <div className="space-y-1">
+                    {stampUrl ? (
+                      <img src={stampUrl} alt="Stamp" className="h-16 w-16 mx-auto object-contain" />
+                    ) : (
+                      <div className="h-16 w-16 mx-auto rounded-full border border-gray-300 flex items-center justify-center text-xs text-gray-500">
+                        Stamp
+                      </div>
+                    )}
+                    <p className="text-xs text-gray-600">{previewIssuerName}</p>
+                    {previewStampText && <p className="text-[10px] text-gray-500">{previewStampText}</p>}
+                    {previewIssuerLocation && <p className="text-[10px] text-gray-400">{previewIssuerLocation}</p>}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    );
+  };
+
   const renderPoliciesEditor = () => (
     <div className="space-y-8">
       <section className="space-y-4">
@@ -3360,6 +4109,8 @@ const AdminPageContent = () => {
         return renderCoursesEditor();
       case PAGE_CONTENT_SLUGS.TEACHER_RESOURCES:
         return renderResourcesEditor();
+      case PAGE_CONTENT_SLUGS.CERTIFICATE_SETTINGS:
+        return renderCertificateSettingsEditor();
       case PAGE_CONTENT_SLUGS.POLICIES:
         return renderPoliciesEditor();
       default:

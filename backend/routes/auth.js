@@ -4,6 +4,8 @@ const { protect } = require('../middleware/auth');
 const {
   register,
   login,
+  verifyEmail,
+  resendVerification,
   getMe,
   updateProfile,
   changePassword
@@ -12,6 +14,8 @@ const {
 // Public routes
 router.post('/register', register);
 router.post('/login', login);
+router.get('/verify-email', verifyEmail);
+router.post('/resend-verification', resendVerification);
 
 // Protected routes
 router.get('/me', protect, getMe);

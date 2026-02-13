@@ -5,6 +5,7 @@ export const PAGE_CONTENT_SLUGS = {
   TEACHER_COURSES: 'teacher-training-courses',
   TEACHER_RESOURCES: 'teacher-training-resources',
   POLICIES: 'policies',
+  CERTIFICATE_SETTINGS: 'certificate-settings',
 };
 
 export const PAGE_CONTENT_OPTIONS = [
@@ -37,6 +38,11 @@ export const PAGE_CONTENT_OPTIONS = [
     slug: PAGE_CONTENT_SLUGS.POLICIES,
     label: 'Policies Page',
     description: 'Policy list, stats, and header text.'
+  },
+  {
+    slug: PAGE_CONTENT_SLUGS.CERTIFICATE_SETTINGS,
+    label: 'Certificate Settings',
+    description: 'Templates, badges, signatures, and certificate layout.'
   },
 ];
 
@@ -144,6 +150,84 @@ const defaultOverview = {
       theme: 'blue',
     },
   ],
+};
+
+const defaultCertificateTemplates = [
+  {
+    id: 'classic-blue',
+    name: 'Classic Blue',
+    accentColor: '#1d4ed8',
+    secondaryColor: '#3b82f6',
+    backgroundColor: '#f8fafc',
+    borderColor: '#1e40af'
+  },
+  {
+    id: 'emerald-gold',
+    name: 'Emerald Gold',
+    accentColor: '#047857',
+    secondaryColor: '#10b981',
+    backgroundColor: '#ecfdf5',
+    borderColor: '#065f46'
+  },
+  {
+    id: 'midnight',
+    name: 'Midnight',
+    accentColor: '#111827',
+    secondaryColor: '#374151',
+    backgroundColor: '#f9fafb',
+    borderColor: '#1f2937'
+  }
+];
+
+const defaultCertificateBadges = [
+  {
+    id: 'spatial-ai-certified',
+    label: 'Spatial AI Certified',
+    enabled: true,
+    backgroundColor: '#dbeafe',
+    textColor: '#1d4ed8'
+  },
+  {
+    id: 'teacher-ready',
+    label: 'Teacher Ready',
+    enabled: true,
+    backgroundColor: '#dcfce7',
+    textColor: '#15803d'
+  },
+  {
+    id: 'policy-aligned',
+    label: 'Policy Aligned',
+    enabled: false,
+    backgroundColor: '#fef3c7',
+    textColor: '#b45309'
+  }
+];
+
+const defaultCertificateSettings = {
+  title: 'Certificate Customization',
+  certificateTitle: 'Certificate of Achievement',
+  presentedToText: 'This certificate is proudly presented to',
+  completionText: 'for successfully completing the professional training course',
+  programName: 'Spatial AI Music Teacher Training',
+  footerText: 'Awarded on {{date}}',
+  signatoryName: 'Dr. Amina Mwangi',
+  signatoryTitle: 'Program Director',
+  issuerName: 'Spatial AI',
+  issuerLocation: 'Kenya',
+  stampText: 'Official Stamp',
+  signatureImageUrl: '',
+  stampImageUrl: '',
+  showSignature: true,
+  showStamp: true,
+  showBadges: true,
+  showBadgeLabels: true,
+  templates: defaultCertificateTemplates,
+  activeTemplateId: defaultCertificateTemplates[0].id,
+  badges: defaultCertificateBadges,
+  additionalLines: [
+    { id: 'certificate-id', label: 'Certificate ID', value: 'SAI-2024-001' },
+    { id: 'cohort', label: 'Cohort', value: 'Teacher Training 2024' }
+  ]
 };
 
 const defaultHome = {
@@ -609,6 +693,7 @@ export const DEFAULT_PAGE_CONTENT = {
     stats: defaultPolicyStats,
     policies: defaultPolicies,
   },
+  [PAGE_CONTENT_SLUGS.CERTIFICATE_SETTINGS]: defaultCertificateSettings,
 };
 
 export const getDefaultPageContent = (slug) => {

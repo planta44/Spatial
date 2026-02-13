@@ -1,12 +1,27 @@
+const crypto = require('crypto');
 const User = require('../models/User');
 const { generateToken, errorResponse, successResponse } = require('../utils/helpers');
+const { sendVerificationEmail } = require('../services/emailService');
+
+const getFrontendBaseUrl = () => {
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+  return frontendUrl.replace(/\/+$/, '');
+};
+
+const createEmailVerificationToken = () => {
+  const token = crypto.randomBytes(32).toString('hex');
+  const expires = new Date(Date.now() + 1000 * 60 * 60 * 24);
+  return { token, expires };
+};
+
+const buildVerificationUrl = (token) => `${getFrontendBaseUrl()}/verify-email?token=${token}`;
 
 // @desc    Register new user
 // @route   POST /api/auth/register
 // @access  Public
 const register = async (req, res) => {
   try {
-    const { name, email, password, role, university, department, specialization } = req.body;
+    const { name, email, password, university, department, specialization } = req.body;
 
     // Validate required fields
     if (!name || !email || !password) {
@@ -14,44 +29,156 @@ const register = async (req, res) => {
     }
 
     // Check if user already exists
-    const userExists = await User.findOne({ where: { email } });
+    const normalizedEmail = String(email).toLowerCase().trim();
+    const userExists = await User.findOne({ where: { email: normalizedEmail } });
+    const { token, expires } = createEmailVerificationToken();
 
     if (userExists) {
-      return errorResponse(res, 400, 'User already exists with this email');
+      if (userExists.emailVerified) {
+        return errorResponse(res, 400, 'User already exists with this email');
+      }
+
+      userExists.name = name || userExists.name;
+      userExists.password = password;
+      userExists.university = university || userExists.university;
+      userExists.department = department || userExists.department;
+      userExists.specialization = specialization || userExists.specialization;
+      userExists.emailVerificationToken = token;
+      userExists.emailVerificationExpires = expires;
+      await userExists.save();
+
+      let emailSent = true;
+      try {
+        await sendVerificationEmail({
+          to: userExists.email,
+          name: userExists.name,
+          verifyUrl: buildVerificationUrl(token)
+        });
+      } catch (error) {
+        emailSent = false;
+        console.error('Verification email failed:', error);
+      }
+
+      return successResponse(res, 200, 'Verification email sent. Please check your inbox.', {
+        requiresVerification: true,
+        emailSent
+      });
     }
 
-    // Create user
     const user = await User.create({
       name,
-      email,
+      email: normalizedEmail,
       password,
-      role: role || 'student',
+      role: 'student',
       university,
       department,
-      specialization
+      specialization,
+      emailVerified: false,
+      emailVerificationToken: token,
+      emailVerificationExpires: expires
     });
 
-    // Generate token
-    const token = generateToken(user.id);
+    let emailSent = true;
+    try {
+      await sendVerificationEmail({
+        to: user.email,
+        name: user.name,
+        verifyUrl: buildVerificationUrl(token)
+      });
+    } catch (error) {
+      emailSent = false;
+      console.error('Verification email failed:', error);
+    }
 
-    res.status(201).json({
-      success: true,
-      message: 'User registered successfully',
-      data: {
-        user: {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          role: user.role,
-          university: user.university,
-          department: user.department
-        },
-        token
-      }
+    return successResponse(res, 201, 'Registration successful. Please verify your email.', {
+      requiresVerification: true,
+      emailSent
     });
   } catch (error) {
     console.error('Register error:', error);
     errorResponse(res, 500, error.message || 'Error registering user');
+  }
+};
+
+// @desc    Verify email address
+// @route   GET /api/auth/verify-email
+// @access  Public
+const verifyEmail = async (req, res) => {
+  try {
+    const token = req.query?.token || req.body?.token;
+
+    if (!token) {
+      return errorResponse(res, 400, 'Verification token is required');
+    }
+
+    const user = await User.findOne({ where: { emailVerificationToken: token } });
+
+    if (!user) {
+      return errorResponse(res, 400, 'Invalid or expired verification token');
+    }
+
+    if (user.emailVerified) {
+      return successResponse(res, 200, 'Email already verified');
+    }
+
+    if (user.emailVerificationExpires && user.emailVerificationExpires < new Date()) {
+      return errorResponse(res, 400, 'Verification token has expired', { expired: true });
+    }
+
+    user.emailVerified = true;
+    user.emailVerificationToken = null;
+    user.emailVerificationExpires = null;
+    await user.save();
+
+    return successResponse(res, 200, 'Email verified successfully', { user: user.toJSON() });
+  } catch (error) {
+    console.error('Verify email error:', error);
+    return errorResponse(res, 500, 'Error verifying email');
+  }
+};
+
+// @desc    Resend verification email
+// @route   POST /api/auth/resend-verification
+// @access  Public
+const resendVerification = async (req, res) => {
+  try {
+    const { email } = req.body || {};
+
+    if (!email) {
+      return errorResponse(res, 400, 'Email is required');
+    }
+
+    const normalizedEmail = String(email).toLowerCase().trim();
+    const user = await User.findOne({ where: { email: normalizedEmail } });
+
+    if (!user) {
+      return errorResponse(res, 404, 'User not found');
+    }
+
+    if (user.emailVerified) {
+      return successResponse(res, 200, 'Email already verified');
+    }
+
+    const { token, expires } = createEmailVerificationToken();
+    user.emailVerificationToken = token;
+    user.emailVerificationExpires = expires;
+    await user.save();
+
+    try {
+      await sendVerificationEmail({
+        to: user.email,
+        name: user.name,
+        verifyUrl: buildVerificationUrl(token)
+      });
+    } catch (error) {
+      console.error('Resend verification email failed:', error);
+      return errorResponse(res, 500, 'Unable to send verification email');
+    }
+
+    return successResponse(res, 200, 'Verification email resent');
+  } catch (error) {
+    console.error('Resend verification error:', error);
+    return errorResponse(res, 500, 'Error resending verification email');
   }
 };
 
@@ -79,6 +206,12 @@ const login = async (req, res) => {
     // Check if user is active
     if (!user.isActive) {
       return errorResponse(res, 401, 'Account is deactivated');
+    }
+
+    if (!user.emailVerified) {
+      return errorResponse(res, 403, 'Please verify your email before logging in.', {
+        requiresVerification: true
+      });
     }
 
     // Verify password
@@ -199,6 +332,8 @@ const changePassword = async (req, res) => {
 module.exports = {
   register,
   login,
+  verifyEmail,
+  resendVerification,
   getMe,
   updateProfile,
   changePassword

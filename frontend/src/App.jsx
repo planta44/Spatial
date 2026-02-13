@@ -17,6 +17,7 @@ import CourseDetail from './pages/CourseDetail';
 import TeacherTrainingResourceDetail from './pages/TeacherTrainingResourceDetail';
 import Profile from './pages/Profile';
 import CourseModuleDetail from './pages/CourseModuleDetail';
+import VerifyEmail from './pages/VerifyEmail';
 
 function App() {
   return (
@@ -41,6 +42,7 @@ function App() {
           <Route path="/teacher-training" element={<TeacherTraining />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/practice" element={<StudentPractice />} />
+          <Route path="/verify-email" element={<VerifyEmail />} />
         </Routes>
       </main>
       

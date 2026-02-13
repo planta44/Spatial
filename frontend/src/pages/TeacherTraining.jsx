@@ -24,6 +24,17 @@ import {
 } from '../utils/courseEnrollment';
 import { clearCourseProgress, getCompletionProgress, isModuleComplete } from '../utils/courseProgress';
 
+const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5001/api').replace(/\/+$/, '').replace(/\/+api$/, '');
+
+const resolveAssetUrl = (url) => {
+  if (!url) return '';
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
+  }
+  const normalized = url.startsWith('/') ? url : `/${url}`;
+  return `${API_BASE_URL}${normalized}`;
+};
+
 const TeacherTraining = () => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -39,6 +50,9 @@ const TeacherTraining = () => {
   );
   const [resourceContent, setResourceContent] = useState(() =>
     getDefaultPageContent(PAGE_CONTENT_SLUGS.TEACHER_RESOURCES)
+  );
+  const [certificateContent, setCertificateContent] = useState(() =>
+    getDefaultPageContent(PAGE_CONTENT_SLUGS.CERTIFICATE_SETTINGS)
   );
 
   useEffect(() => {
@@ -56,10 +70,11 @@ const TeacherTraining = () => {
     };
 
     const loadContent = async () => {
-      const [overview, courses, resources] = await Promise.all([
+      const [overview, courses, resources, certificateSettings] = await Promise.all([
         fetchPageContent(PAGE_CONTENT_SLUGS.TEACHER_OVERVIEW),
         fetchPageContent(PAGE_CONTENT_SLUGS.TEACHER_COURSES),
-        fetchPageContent(PAGE_CONTENT_SLUGS.TEACHER_RESOURCES)
+        fetchPageContent(PAGE_CONTENT_SLUGS.TEACHER_RESOURCES),
+        fetchPageContent(PAGE_CONTENT_SLUGS.CERTIFICATE_SETTINGS)
       ]);
 
       if (!isMounted) return;
@@ -67,6 +82,7 @@ const TeacherTraining = () => {
       setOverviewContent(overview);
       setCourseContent(courses);
       setResourceContent(resources);
+      setCertificateContent(certificateSettings);
     };
 
     loadContent();
@@ -145,6 +161,10 @@ const TeacherTraining = () => {
   const overviewStats = Array.isArray(overviewContent?.stats) ? overviewContent.stats : [];
   const pathways = Array.isArray(overviewContent?.pathways) ? overviewContent.pathways : [];
   const resourceCategories = Array.isArray(resourceContent?.categories) ? resourceContent.categories : [];
+  const certificateSettings =
+    certificateContent && Object.keys(certificateContent).length > 0
+      ? certificateContent
+      : getDefaultPageContent(PAGE_CONTENT_SLUGS.CERTIFICATE_SETTINGS);
 
   const iconMap = { BookOpen, Users, Award, FileText, Download, Play };
   const statIconColors = ['text-yellow-300', 'text-green-300', 'text-purple-300', 'text-blue-300'];
@@ -323,38 +343,128 @@ const TeacherTraining = () => {
     navigate(`/courses/${courseId}`);
   };
 
-  const handleDownloadCertificate = (course, enrollment) => {
+  const resolveTemplateText = (value, replacements) =>
+    String(value || '').replace(/\{\{(\w+)\}\}/g, (_, key) => replacements[key] ?? '');
+
+  const parseHexColor = (value, fallback) => {
+    if (typeof value !== 'string') return fallback;
+    const trimmed = value.replace('#', '').trim();
+    if (!trimmed) return fallback;
+    const normalized = trimmed.length === 3
+      ? trimmed
+          .split('')
+          .map((item) => item + item)
+          .join('')
+      : trimmed;
+    if (normalized.length !== 6) return fallback;
+    const numeric = Number.parseInt(normalized, 16);
+    if (Number.isNaN(numeric)) return fallback;
+    return [(numeric >> 16) & 255, (numeric >> 8) & 255, numeric & 255];
+  };
+
+  const loadImageData = async (url) => {
+    if (!url) return null;
+    try {
+      const resolvedUrl = resolveAssetUrl(url);
+      if (!resolvedUrl) return null;
+      const response = await fetch(resolvedUrl);
+      if (!response.ok) {
+        return null;
+      }
+      const blob = await response.blob();
+      return await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    } catch (error) {
+      console.error('Failed to load certificate image:', error);
+      return null;
+    }
+  };
+
+  const handleDownloadCertificate = async (course, enrollment) => {
+    const settings = certificateSettings || {};
     const userName = userProfile?.name || 'Student';
     const completionDate = enrollment?.completedAt
       ? new Date(enrollment.completedAt)
       : new Date();
+    const formattedDate = completionDate.toLocaleDateString();
+    const replacements = {
+      name: userName,
+      course: course?.title || '',
+      date: formattedDate,
+      issuer: settings.issuerName || ''
+    };
+    const templates = Array.isArray(settings.templates) ? settings.templates : [];
+    const activeTemplate =
+      templates.find((template) => template.id === settings.activeTemplateId) || templates[0] || {};
+    const badges = Array.isArray(settings.badges) ? settings.badges : [];
+    const additionalLines = Array.isArray(settings.additionalLines) ? settings.additionalLines : [];
+
+    const accentColor = activeTemplate.accentColor || '#1d4ed8';
+    const secondaryColor = activeTemplate.secondaryColor || '#3b82f6';
+    const backgroundColor = activeTemplate.backgroundColor || '#f8fafc';
+    const borderColor = activeTemplate.borderColor || '#1e40af';
+
+    const accentRgb = parseHexColor(accentColor, [30, 64, 175]);
+    const secondaryRgb = parseHexColor(secondaryColor, [59, 130, 246]);
+    const backgroundRgb = parseHexColor(backgroundColor, [248, 250, 252]);
+    const borderRgb = parseHexColor(borderColor, [30, 64, 175]);
 
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
     const centerX = pageWidth / 2;
+    const outerPadding = 8;
+    const stripeHeight = 8;
 
-    doc.setFillColor(248, 250, 252);
+    doc.setFillColor(...backgroundRgb);
     doc.rect(0, 0, pageWidth, pageHeight, 'F');
 
-    doc.setDrawColor(30, 64, 175);
+    doc.setDrawColor(...borderRgb);
     doc.setLineWidth(1);
-    doc.rect(8, 8, pageWidth - 16, pageHeight - 16);
+    doc.rect(outerPadding, outerPadding, pageWidth - 2 * outerPadding, pageHeight - 2 * outerPadding);
 
-    doc.setFillColor(30, 64, 175);
-    doc.rect(8, 8, pageWidth - 16, 8, 'F');
-    doc.setFillColor(59, 130, 246);
-    doc.rect(8, pageHeight - 16, pageWidth - 16, 8, 'F');
+    doc.setFillColor(...accentRgb);
+    doc.rect(outerPadding, outerPadding, pageWidth - 2 * outerPadding, stripeHeight, 'F');
+    doc.setFillColor(...secondaryRgb);
+    doc.rect(
+      outerPadding,
+      pageHeight - outerPadding - stripeHeight,
+      pageWidth - 2 * outerPadding,
+      stripeHeight,
+      'F'
+    );
+
+    const certificateTitle = resolveTemplateText(
+      settings.certificateTitle || 'Certificate of Achievement',
+      replacements
+    );
+    const presentedToText = resolveTemplateText(
+      settings.presentedToText || 'This certificate is proudly presented to',
+      replacements
+    );
+    const completionText = resolveTemplateText(
+      settings.completionText || 'for successfully completing the professional training course',
+      replacements
+    );
+    const programName = resolveTemplateText(
+      settings.programName || course?.title || '',
+      replacements
+    );
+    const footerText = resolveTemplateText(settings.footerText || 'Awarded on {{date}}', replacements);
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(28);
-    doc.setTextColor(30, 64, 175);
-    doc.text('Certificate of Achievement', centerX, 48, { align: 'center' });
+    doc.setTextColor(...accentRgb);
+    doc.text(certificateTitle, centerX, 48, { align: 'center' });
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(14);
     doc.setTextColor(55, 65, 81);
-    doc.text('This certificate is proudly presented to', centerX, 68, { align: 'center' });
+    doc.text(presentedToText, centerX, 68, { align: 'center' });
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(26);
@@ -364,47 +474,118 @@ const TeacherTraining = () => {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(14);
     doc.setTextColor(55, 65, 81);
-    doc.text('for successfully completing the professional training course', centerX, 104, { align: 'center' });
+    doc.text(completionText, centerX, 104, { align: 'center' });
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(20);
     doc.setTextColor(17, 24, 39);
-    doc.text(course.title, centerX, 120, { align: 'center' });
+    doc.text(programName || course?.title || '', centerX, 120, { align: 'center' });
 
+    const additionalLineStart = 134;
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(12);
-    doc.setTextColor(75, 85, 99);
-    doc.text(`Completed on ${completionDate.toLocaleDateString()}`, centerX, 134, { align: 'center' });
-
-    doc.setTextColor(30, 64, 175);
     doc.setFontSize(11);
-    doc.text('Spatial AI Music Teacher Training', centerX, 150, { align: 'center' });
-
-    doc.setDrawColor(156, 163, 175);
-    doc.setLineWidth(0.5);
-    doc.line(45, 165, 120, 165);
-
-    doc.setFont('helvetica', 'italic');
-    doc.setFontSize(12);
-    doc.setTextColor(31, 41, 55);
-    doc.text('Dr. Amina Mwangi', 82.5, 160, { align: 'center' });
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
     doc.setTextColor(75, 85, 99);
-    doc.text('Program Director', 82.5, 172, { align: 'center' });
+    additionalLines.forEach((line, index) => {
+      const label = line?.label ? `${line.label}:` : '';
+      const value = line?.value ? String(line.value) : '';
+      const lineText = [label, value].filter(Boolean).join(' ');
+      if (!lineText) return;
+      doc.text(lineText, centerX, additionalLineStart + index * 6, { align: 'center' });
+    });
 
-    doc.setDrawColor(30, 64, 175);
-    doc.setLineWidth(1);
-    doc.circle(pageWidth - 60, 162, 18);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
-    doc.setTextColor(30, 64, 175);
-    doc.text('Spatial AI', pageWidth - 60, 158, { align: 'center' });
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.text('Official Stamp', pageWidth - 60, 164, { align: 'center' });
-    doc.text('Kenya', pageWidth - 60, 170, { align: 'center' });
+    doc.setFontSize(12);
+    doc.setTextColor(75, 85, 99);
+    doc.text(footerText, centerX, pageHeight - 30, { align: 'center' });
+
+    const badgeStartY = additionalLineStart + additionalLines.length * 6 + 8;
+    const enabledBadges = badges.filter((badge) => badge?.enabled);
+    if (settings.showBadges && enabledBadges.length > 0) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      let badgeX = 30;
+      enabledBadges.forEach((badge) => {
+        const showBadgeLabel = settings.showBadgeLabels !== false;
+        const badgeLabel = showBadgeLabel ? String(badge.label || 'Badge') : '';
+        const badgeWidth = doc.getTextWidth(badgeLabel || 'Badge') + 10;
+        const badgeHeight = 8;
+        const badgeRgb = parseHexColor(badge.backgroundColor, [219, 234, 254]);
+        const badgeTextRgb = parseHexColor(badge.textColor, [30, 64, 175]);
+        doc.setFillColor(...badgeRgb);
+        doc.setDrawColor(...badgeRgb);
+        doc.roundedRect(badgeX, badgeStartY, badgeWidth, badgeHeight, 2, 2, 'F');
+        if (showBadgeLabel) {
+          doc.setTextColor(...badgeTextRgb);
+          doc.text(badgeLabel, badgeX + badgeWidth / 2, badgeStartY + 5.5, { align: 'center' });
+        }
+        badgeX += badgeWidth + 4;
+      });
+    }
+
+    const signatureCenterX = pageWidth * 0.33;
+    const signatureLineY = pageHeight - 45;
+    const signatureImage = settings.showSignature
+      ? await loadImageData(settings.signatureImageUrl)
+      : null;
+    if (settings.showSignature) {
+      doc.setDrawColor(156, 163, 175);
+      doc.setLineWidth(0.5);
+      doc.line(signatureCenterX - 35, signatureLineY, signatureCenterX + 35, signatureLineY);
+
+      if (signatureImage) {
+        const signatureFormat = signatureImage.startsWith('data:image/png') ? 'PNG' : 'JPEG';
+        doc.addImage(signatureImage, signatureFormat, signatureCenterX - 25, signatureLineY - 18, 50, 15);
+      }
+
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(12);
+      doc.setTextColor(31, 41, 55);
+      doc.text(
+        resolveTemplateText(settings.signatoryName || 'Program Director', replacements),
+        signatureCenterX,
+        signatureLineY + 6,
+        { align: 'center' }
+      );
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(75, 85, 99);
+      doc.text(
+        resolveTemplateText(settings.signatoryTitle || '', replacements),
+        signatureCenterX,
+        signatureLineY + 12,
+        { align: 'center' }
+      );
+    }
+
+    const stampCenterX = pageWidth - 60;
+    const stampCenterY = pageHeight - 48;
+    const stampImage = settings.showStamp ? await loadImageData(settings.stampImageUrl) : null;
+    if (settings.showStamp) {
+      if (stampImage) {
+        const stampFormat = stampImage.startsWith('data:image/png') ? 'PNG' : 'JPEG';
+        doc.addImage(stampImage, stampFormat, stampCenterX - 18, stampCenterY - 18, 36, 36);
+      } else {
+        doc.setDrawColor(...accentRgb);
+        doc.setLineWidth(1);
+        doc.circle(stampCenterX, stampCenterY, 18);
+      }
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.setTextColor(...accentRgb);
+      doc.text(resolveTemplateText(settings.issuerName || '', replacements), stampCenterX, stampCenterY - 4, {
+        align: 'center'
+      });
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.text(resolveTemplateText(settings.stampText || '', replacements), stampCenterX, stampCenterY + 2, {
+        align: 'center'
+      });
+      doc.text(resolveTemplateText(settings.issuerLocation || '', replacements), stampCenterX, stampCenterY + 8, {
+        align: 'center'
+      });
+    }
 
     doc.save(`${slugify(course.title)}-certificate.pdf`);
   };
