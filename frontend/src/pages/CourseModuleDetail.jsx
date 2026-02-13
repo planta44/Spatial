@@ -83,11 +83,13 @@ const buildMarkdownBlocks = (content) => {
   const lines = String(content || '').split('\n');
   const blocks = [];
   let listItems = [];
+  let listType = null;
 
   const flushList = () => {
     if (listItems.length) {
-      blocks.push({ type: 'list', items: listItems });
+      blocks.push({ type: 'list', items: listItems, ordered: listType === 'ordered' });
       listItems = [];
+      listType = null;
     }
   };
 
@@ -97,8 +99,23 @@ const buildMarkdownBlocks = (content) => {
       flushList();
       return;
     }
-    if (trimmed.startsWith('- ')) {
-      listItems.push(trimmed.replace(/^- /, ''));
+
+    const unorderedMatch = trimmed.match(/^[-*•]\s+/);
+    const orderedMatch = trimmed.match(/^\d+\.\s+/);
+    if (unorderedMatch) {
+      if (listType && listType !== 'unordered') {
+        flushList();
+      }
+      listType = 'unordered';
+      listItems.push(trimmed.replace(/^[-*•]\s+/, ''));
+      return;
+    }
+    if (orderedMatch) {
+      if (listType && listType !== 'ordered') {
+        flushList();
+      }
+      listType = 'ordered';
+      listItems.push(trimmed.replace(/^\d+\.\s+/, ''));
       return;
     }
     flushList();
@@ -121,6 +138,59 @@ const buildMarkdownBlocks = (content) => {
 
   flushList();
   return blocks;
+};
+
+const renderMarkdownBlocks = (content, keyPrefix) => {
+  const blocks = buildMarkdownBlocks(content);
+  if (!blocks.length) {
+    return null;
+  }
+
+  return (
+    <div className="space-y-4">
+      {blocks.map((block, index) => {
+        const key = `${keyPrefix}-${block.type}-${index}`;
+        if (block.type === 'heading') {
+          const HeadingTag = block.level === 1 ? 'h2' : block.level === 2 ? 'h3' : 'h4';
+          const headingClass = block.level === 1
+            ? 'text-2xl font-semibold text-gray-900'
+            : block.level === 2
+              ? 'text-xl font-semibold text-gray-900'
+              : 'text-lg font-semibold text-gray-900';
+          return (
+            <HeadingTag
+              key={key}
+              className={headingClass}
+              dangerouslySetInnerHTML={{ __html: formatInlineMarkdown(block.text) }}
+            />
+          );
+        }
+        if (block.type === 'list') {
+          const ListTag = block.ordered ? 'ol' : 'ul';
+          const listClass = block.ordered
+            ? 'list-decimal list-inside space-y-1 text-gray-700'
+            : 'list-disc list-inside space-y-1 text-gray-700';
+          return (
+            <ListTag key={key} className={listClass}>
+              {block.items.map((listItem, listIndex) => (
+                <li
+                  key={`${key}-item-${listIndex}`}
+                  dangerouslySetInnerHTML={{ __html: formatInlineMarkdown(listItem) }}
+                />
+              ))}
+            </ListTag>
+          );
+        }
+        return (
+          <p
+            key={key}
+            className="text-gray-700 leading-relaxed"
+            dangerouslySetInnerHTML={{ __html: formatInlineMarkdown(block.text) }}
+          />
+        );
+      })}
+    </div>
+  );
 };
 
 const formatTimer = (value) => {
@@ -278,9 +348,12 @@ const CourseModuleDetail = () => {
   }, [moduleItem]);
 
   const quizEnabled = moduleItem?.type === 'quiz' || quizData?.enabled;
+  const allowAccess = isEnrolled || isPreview;
+  const isReadOnly = isComplete;
+  const allowQuizInteraction = allowAccess && !isReadOnly;
 
   useEffect(() => {
-    if (!quizEnabled || quizResult?.submitted) {
+    if (!quizEnabled || quizResult?.submitted || isReadOnly) {
       setTimeLeft(null);
       return;
     }
@@ -300,12 +373,11 @@ const CourseModuleDetail = () => {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [quizEnabled, quizData?.timeLimitMinutes, quizResult?.submitted, moduleId]);
-
-  const allowAccess = isEnrolled || isPreview;
+  }, [quizEnabled, quizData?.timeLimitMinutes, quizResult?.submitted, moduleId, isReadOnly]);
 
   const handleMarkComplete = useCallback(async () => {
     if (!resolvedCourseId || !resolvedModuleId) return;
+    if (isComplete) return;
     if (!allowAccess) {
       toast.error('Please enroll to track your progress.');
       navigate('/admin?mode=register');
@@ -333,9 +405,10 @@ const CourseModuleDetail = () => {
     } else {
       toast.success('Module marked complete.');
     }
-  }, [allowAccess, modules.length, navigate, resolvedCourseId, resolvedModuleId]);
+  }, [allowAccess, isComplete, modules.length, navigate, resolvedCourseId, resolvedModuleId]);
 
   const handleAnswerChange = (questionId, optionId, allowMultiple) => {
+    if (!allowQuizInteraction) return;
     setAnswers((prev) => {
       const current = new Set(prev[questionId] || []);
       if (allowMultiple) {
@@ -352,6 +425,10 @@ const CourseModuleDetail = () => {
 
   const handleSubmitQuiz = useCallback(
     (isAuto = false) => {
+      if (!allowQuizInteraction) {
+        toast('Quiz is read-only after completion.', { icon: 'ℹ️' });
+        return;
+      }
       if (!quizData || !quizData.questions.length) {
         toast.error('Quiz questions are not available yet.');
         return;
@@ -387,7 +464,7 @@ const CourseModuleDetail = () => {
         toast.error('Quiz not passed yet. Review the questions and try again.');
       }
     },
-    [answers, handleMarkComplete, quizData]
+    [allowQuizInteraction, answers, handleMarkComplete, quizData]
   );
 
   useEffect(() => {
@@ -439,55 +516,16 @@ const CourseModuleDetail = () => {
   }
 
   const renderMarkdownContent = () => {
-    if (!moduleItem.content) {
+    if (!moduleItem?.content) {
       return <p className="text-sm text-gray-500">Module content will be available soon.</p>;
     }
 
-    const blocks = buildMarkdownBlocks(moduleItem.content);
-    if (!blocks.length) {
+    const contentMarkup = renderMarkdownBlocks(moduleItem.content, 'module-content');
+    if (!contentMarkup) {
       return <p className="text-sm text-gray-500">Module content will be available soon.</p>;
     }
 
-    return (
-      <div className="space-y-4">
-        {blocks.map((block, index) => {
-          if (block.type === 'heading') {
-            const HeadingTag = block.level === 1 ? 'h2' : block.level === 2 ? 'h3' : 'h4';
-            const headingClass = block.level === 1
-              ? 'text-2xl font-semibold text-gray-900'
-              : block.level === 2
-                ? 'text-xl font-semibold text-gray-900'
-                : 'text-lg font-semibold text-gray-900';
-            return (
-              <HeadingTag
-                key={`heading-${index}`}
-                className={headingClass}
-                dangerouslySetInnerHTML={{ __html: formatInlineMarkdown(block.text) }}
-              />
-            );
-          }
-          if (block.type === 'list') {
-            return (
-              <ul key={`list-${index}`} className="list-disc list-inside space-y-1 text-gray-700">
-                {block.items.map((listItem, listIndex) => (
-                  <li
-                    key={`list-${index}-item-${listIndex}`}
-                    dangerouslySetInnerHTML={{ __html: formatInlineMarkdown(listItem) }}
-                  />
-                ))}
-              </ul>
-            );
-          }
-          return (
-            <p
-              key={`paragraph-${index}`}
-              className="text-gray-700 leading-relaxed"
-              dangerouslySetInnerHTML={{ __html: formatInlineMarkdown(block.text) }}
-            />
-          );
-        })}
-      </div>
-    );
+    return contentMarkup;
   };
 
   const renderContentBlocks = () => (
@@ -523,6 +561,13 @@ const CourseModuleDetail = () => {
               ))}
             </ul>
           );
+        }
+        if (block.type === 'plain') {
+          const plainMarkup = renderMarkdownBlocks(block.text, `plain-${key}`);
+          if (!plainMarkup) {
+            return null;
+          }
+          return <div key={key}>{plainMarkup}</div>;
         }
         if (block.type === 'link') {
           return (
@@ -669,6 +714,14 @@ const CourseModuleDetail = () => {
           )}
         </div>
 
+        {isReadOnly && (
+          <div className="border border-blue-200 bg-blue-50 rounded-lg p-4">
+            <p className="text-sm text-blue-700">
+              You have completed this module. Quiz questions are available in read-only mode.
+            </p>
+          </div>
+        )}
+
         {quizResult?.submitted && (
           <div
             className={`border rounded-lg p-4 ${quizResult.passed ? 'border-green-200 bg-green-50' : 'border-amber-200 bg-amber-50'}`}
@@ -703,7 +756,7 @@ const CourseModuleDetail = () => {
                           checked={checked}
                           onChange={() => handleAnswerChange(question.id, optionId, allowMultiple)}
                           className="mt-1"
-                          disabled={!allowAccess}
+                          disabled={!allowQuizInteraction}
                         />
                         <span>{option.text || 'Option'}</span>
                       </label>
@@ -718,10 +771,10 @@ const CourseModuleDetail = () => {
         <button
           type="button"
           onClick={() => handleSubmitQuiz(false)}
-          disabled={!allowAccess || quizResult?.submitted}
+          disabled={!allowQuizInteraction || quizResult?.submitted}
           className="inline-flex items-center justify-center bg-blue-600 text-white px-5 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-60"
         >
-          Submit quiz
+          {isReadOnly ? 'Quiz completed' : 'Submit quiz'}
         </button>
       </div>
     );
@@ -762,7 +815,7 @@ const CourseModuleDetail = () => {
               <CheckCircle2 className={`h-4 w-4 ${isComplete ? 'text-green-500' : 'text-gray-300'}`} />
               {isComplete ? 'Completed' : 'Not completed yet'}
             </div>
-            {!quizEnabled && (
+            {!quizEnabled && !isComplete && (
               <button
                 type="button"
                 onClick={handleMarkComplete}

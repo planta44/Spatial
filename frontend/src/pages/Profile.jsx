@@ -92,8 +92,18 @@ const Profile = () => {
           window.dispatchEvent(new Event('auth-change'));
         }
       } catch (error) {
+        console.error('Failed to load profile:', error);
         if (isMounted) {
-          setLoadError('Unable to load profile details. Please try again.');
+          const status = error.response?.status;
+          if (status === 401) {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            window.dispatchEvent(new Event('auth-change'));
+            setIsAuthenticated(false);
+            setLoadError('');
+          } else if (!storedUser) {
+            setLoadError('Unable to load profile details. Please try again.');
+          }
         }
       } finally {
         if (isMounted) {
@@ -120,6 +130,8 @@ const Profile = () => {
       .slice(0, 2);
     return letters.toUpperCase();
   }, [profile.name]);
+
+  const isAdmin = profile.role === 'admin' || profile.role === 'teacher';
 
   const handleFieldChange = (field) => (event) => {
     const value = event.target.value;
@@ -264,6 +276,15 @@ const Profile = () => {
                 placeholder="https://..."
               />
             </div>
+
+            {isAdmin && (
+              <Link
+                to="/admin"
+                className="w-full inline-flex items-center justify-center bg-primary-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-primary-700 transition-colors"
+              >
+                Admin Dashboard
+              </Link>
+            )}
 
             <button
               type="button"

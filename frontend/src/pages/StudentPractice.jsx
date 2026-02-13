@@ -463,16 +463,16 @@ const StudentPractice = () => {
 
   const renderComposer = () => (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <h3 className="text-2xl font-bold">AI Music Composer</h3>
-        <div className="flex gap-2">
-          <button className="flex items-center gap-2 bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600">
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+          <button className="flex items-center justify-center gap-2 bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600 w-full sm:w-auto">
             <Download size={16} />
             Export MIDI
           </button>
           <button 
             onClick={() => handleSaveProject(composition)}
-            className="flex items-center gap-2 bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
+            className="flex items-center justify-center gap-2 bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 w-full sm:w-auto"
           >
             <Save size={16} />
             Save Project
@@ -577,16 +577,16 @@ const StudentPractice = () => {
 
   const renderSpatializer = () => (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <h3 className="text-2xl font-bold">Spatial Audio Studio</h3>
-        <div className="flex gap-2">
-          <button className="flex items-center gap-2 bg-orange-500 text-white px-4 py-2 rounded hover:bg-orange-600">
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+          <button className="flex items-center justify-center gap-2 bg-orange-500 text-white px-4 py-2 rounded hover:bg-orange-600 w-full sm:w-auto">
             <Upload size={16} />
             Import Audio
           </button>
           <button 
             onClick={() => handleSaveProject(spatialProject)}
-            className="flex items-center gap-2 bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
+            className="flex items-center justify-center gap-2 bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 w-full sm:w-auto"
           >
             <Save size={16} />
             Save Project
@@ -629,12 +629,12 @@ const StudentPractice = () => {
 
   const render3DLab = () => (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <h3 className="text-2xl font-bold">3D Listening & Conducting Lab</h3>
-        <div className="flex gap-2">
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
           <button 
             onClick={() => setIsConducting(!isConducting)}
-            className={`flex items-center gap-2 bg-orange-500 text-white px-4 py-2 rounded hover:bg-orange-600 ${
+            className={`flex items-center justify-center gap-2 bg-orange-500 text-white px-4 py-2 rounded hover:bg-orange-600 w-full sm:w-auto ${
               isConducting ? 'bg-red-600' : ''
             }`}
           >
@@ -736,8 +736,8 @@ const StudentPractice = () => {
           <p className="text-gray-700 mb-3">
             Create an 8-note melody using the AI composition tools. Include both the original AI-generated version and your own modifications.
           </p>
-          <div className="flex items-center gap-4">
-            <button className="bg-blue-500 text-white px-3 py-1 rounded text-sm font-medium transition-colors">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+            <button className="bg-blue-500 text-white px-3 py-1 rounded text-sm font-medium transition-colors w-full sm:w-auto">
               View Submission
             </button>
             <span className="text-sm text-gray-600">Submitted: November 20, 2024</span>
@@ -759,8 +759,8 @@ const StudentPractice = () => {
           <p className="text-gray-700 mb-3">
             Design a 3D audio scene representing a natural environment. Use at least 4 different sound sources positioned in 3D space.
           </p>
-          <div className="flex items-center gap-4">
-            <button className="bg-green-500 text-white px-3 py-1 rounded text-sm font-medium transition-colors">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+            <button className="bg-green-500 text-white px-3 py-1 rounded text-sm font-medium transition-colors w-full sm:w-auto">
               Continue Working
             </button>
             <span className="text-sm text-gray-600">Progress: 60%</span>

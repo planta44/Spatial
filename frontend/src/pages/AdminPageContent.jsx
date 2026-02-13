@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { ArrowDown, ArrowLeft, ArrowUp, Plus, Save, Trash2, Upload } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { pageContentsAPI, resourcesAPI } from '../services/api';
@@ -7,9 +7,12 @@ import { PAGE_CONTENT_OPTIONS, PAGE_CONTENT_SLUGS, getDefaultPageContent } from 
 
 const AdminPageContent = () => {
   const navigate = useNavigate();
-  const [selectedSlug, setSelectedSlug] = useState(PAGE_CONTENT_OPTIONS[0]?.slug || '');
+  const location = useLocation();
+  const [selectedSlug, setSelectedSlug] = useState(() =>
+    location.state?.slug || PAGE_CONTENT_OPTIONS[0]?.slug || ''
+  );
   const [content, setContent] = useState(() =>
-    getDefaultPageContent(PAGE_CONTENT_OPTIONS[0]?.slug || '')
+    getDefaultPageContent(location.state?.slug || PAGE_CONTENT_OPTIONS[0]?.slug || '')
   );
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -63,6 +66,12 @@ const AdminPageContent = () => {
     }
   }, [selectedSlug]);
 
+  useEffect(() => {
+    if (location.state?.slug) {
+      setSelectedSlug(location.state.slug);
+    }
+  }, [location.state?.slug]);
+
   const handleSave = async () => {
     if (!selectedSlug) return;
 
@@ -83,6 +92,30 @@ const AdminPageContent = () => {
 
   const updateContentField = (field, value) => {
     setContent((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const updateContentObjectField = (key, field, value) => {
+    setContent((prev) => ({
+      ...prev,
+      [key]: { ...(prev[key] || {}), [field]: value }
+    }));
+  };
+
+  const updateContentDeepField = (key, nestedKey, field, value) => {
+    setContent((prev) => {
+      const current = prev[key] || {};
+      const nested = current[nestedKey] || {};
+      return {
+        ...prev,
+        [key]: {
+          ...current,
+          [nestedKey]: {
+            ...nested,
+            [field]: value
+          }
+        }
+      };
+    });
   };
 
   const updateListItemField = (listKey, index, field, value) => {
@@ -215,6 +248,37 @@ const AdminPageContent = () => {
     items: [],
   });
 
+  const moduleContentBlockOptions = [
+    { type: 'heading', label: 'Heading' },
+    { type: 'subheading', label: 'Subheading' },
+    { type: 'paragraph', label: 'Paragraph' },
+    { type: 'list', label: 'List' },
+    { type: 'link', label: 'Link' },
+    { type: 'image', label: 'Image' },
+    { type: 'video', label: 'Video' },
+    { type: 'pdf', label: 'PDF' },
+    { type: 'plain', label: 'Plain Sheet' },
+  ];
+
+  const getModuleBlockLabel = (type) =>
+    moduleContentBlockOptions.find((option) => option.type === type)?.label || type;
+
+  const renderModuleBlockButtons = (handleAdd) => (
+    <div className="flex flex-wrap gap-2">
+      {moduleContentBlockOptions.map((option) => (
+        <button
+          key={option.type}
+          type="button"
+          onClick={() => handleAdd(option.type)}
+          className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-full"
+        >
+          <Plus className="h-3 w-3" />
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+
   const createResourceItem = () => ({
     id: `resource-${Date.now()}`,
     title: '',
@@ -346,6 +410,28 @@ const AdminPageContent = () => {
     }
   };
 
+  const handleFooterAvatarUpload = async (index, file) => {
+    if (!file) return;
+    try {
+      setUploading(true);
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await resourcesAPI.uploadAsset(formData);
+      const payload = response?.data || {};
+      const url = payload.url || payload.data?.url || '';
+      if (!url) {
+        throw new Error('Upload failed');
+      }
+      updateListItemField('connectLinks', index, 'avatarUrl', url);
+      toast.success('Avatar uploaded');
+    } catch (error) {
+      console.error('Upload failed:', error);
+      toast.error('Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const updateModule = (courseIndex, moduleIndex, updater) => {
     setContent((prev) => {
       const courses = [...(prev.courses || [])];
@@ -368,6 +454,14 @@ const AdminPageContent = () => {
       ...current,
       contentBlocks: [...(current.contentBlocks || []), createEmptyBlock(type)],
     }));
+
+  const insertModuleContentBlock = (courseIndex, moduleIndex, afterIndex, type) =>
+    updateModule(courseIndex, moduleIndex, (current) => {
+      const blocks = [...(current.contentBlocks || [])];
+      const insertIndex = Math.min(Math.max(afterIndex + 1, 0), blocks.length);
+      blocks.splice(insertIndex, 0, createEmptyBlock(type));
+      return { ...current, contentBlocks: blocks };
+    });
 
   const updateModuleContentBlockField = (courseIndex, moduleIndex, blockIndex, field, value) =>
     updateModule(courseIndex, moduleIndex, (current) => {
@@ -569,8 +663,683 @@ const AdminPageContent = () => {
   const pathways = Array.isArray(content.pathways) ? content.pathways : [];
   const courses = Array.isArray(content.courses) ? content.courses : [];
   const resourceCategories = Array.isArray(content.categories) ? content.categories : [];
+  const features = Array.isArray(content.features) ? content.features : [];
+  const quickLinks = Array.isArray(content.quickLinks) ? content.quickLinks : [];
+  const connectLinks = Array.isArray(content.connectLinks) ? content.connectLinks : [];
   const policyStats = Array.isArray(content.stats) ? content.stats : [];
   const policies = Array.isArray(content.policies) ? content.policies : [];
+
+  const renderHomeEditor = () => {
+    const hero = content.hero || {};
+    const heroGradient = hero.gradient || {};
+    const cta = content.cta || {};
+    const ctaGradient = cta.gradient || {};
+
+    return (
+      <div className="space-y-8">
+        <section className="space-y-4">
+          <h3 className="text-lg font-semibold text-gray-900">Hero Section</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+              <input
+                type="text"
+                value={hero.title || ''}
+                onChange={(event) => updateContentObjectField('hero', 'title', event.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Subtitle</label>
+              <input
+                type="text"
+                value={hero.subtitle || ''}
+                onChange={(event) => updateContentObjectField('hero', 'subtitle', event.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+            <textarea
+              rows={3}
+              value={hero.description || ''}
+              onChange={(event) => updateContentObjectField('hero', 'description', event.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2"
+            />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Primary CTA Label</label>
+              <input
+                type="text"
+                value={hero.primaryCtaLabel || ''}
+                onChange={(event) => updateContentObjectField('hero', 'primaryCtaLabel', event.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Primary CTA Link</label>
+              <input
+                type="text"
+                value={hero.primaryCtaLink || ''}
+                onChange={(event) => updateContentObjectField('hero', 'primaryCtaLink', event.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Secondary CTA Label</label>
+              <input
+                type="text"
+                value={hero.secondaryCtaLabel || ''}
+                onChange={(event) => updateContentObjectField('hero', 'secondaryCtaLabel', event.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Secondary CTA Link</label>
+              <input
+                type="text"
+                value={hero.secondaryCtaLink || ''}
+                onChange={(event) => updateContentObjectField('hero', 'secondaryCtaLink', event.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Gradient From</label>
+              <input
+                type="text"
+                value={heroGradient.from || ''}
+                onChange={(event) => updateContentDeepField('hero', 'gradient', 'from', event.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                placeholder="#2563eb"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Gradient Via</label>
+              <input
+                type="text"
+                value={heroGradient.via || ''}
+                onChange={(event) => updateContentDeepField('hero', 'gradient', 'via', event.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                placeholder="#1d4ed8"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Gradient To</label>
+              <input
+                type="text"
+                value={heroGradient.to || ''}
+                onChange={(event) => updateContentDeepField('hero', 'gradient', 'to', event.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                placeholder="#7c3aed"
+              />
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h3 className="text-lg font-semibold text-gray-900">Stats</h3>
+            <button
+              type="button"
+              onClick={() => addListItem('stats', { value: 0, label: '', suffix: '' })}
+              className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700"
+            >
+              <Plus className="h-4 w-4" />
+              Add stat
+            </button>
+          </div>
+          {stats.length === 0 ? (
+            <p className="text-sm text-gray-500">Add highlight numbers for the homepage.</p>
+          ) : (
+            <div className="space-y-4">
+              {stats.map((stat, index) => (
+                <div key={stat.id || index} className="border border-gray-200 rounded-lg p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium text-gray-600">Stat {index + 1}</p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => moveListItem('stats', index, -1)}
+                        disabled={index === 0}
+                        className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-40"
+                      >
+                        <ArrowUp className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => moveListItem('stats', index, 1)}
+                        disabled={index === stats.length - 1}
+                        className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-40"
+                      >
+                        <ArrowDown className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removeListItem('stats', index)}
+                        className="p-1 text-red-500 hover:text-red-600"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <input
+                      type="number"
+                      value={stat.value ?? ''}
+                      onChange={(event) => updateListItemField('stats', index, 'value', Number(event.target.value))}
+                      className="border border-gray-300 rounded-lg px-3 py-2"
+                      placeholder="Value"
+                    />
+                    <input
+                      type="text"
+                      value={stat.label || ''}
+                      onChange={(event) => updateListItemField('stats', index, 'label', event.target.value)}
+                      className="border border-gray-300 rounded-lg px-3 py-2"
+                      placeholder="Label"
+                    />
+                    <input
+                      type="text"
+                      value={stat.suffix || ''}
+                      onChange={(event) => updateListItemField('stats', index, 'suffix', event.target.value)}
+                      className="border border-gray-300 rounded-lg px-3 py-2"
+                      placeholder="Suffix (e.g. +, %)"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="space-y-4">
+          <h3 className="text-lg font-semibold text-gray-900">Features Section</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Section Title</label>
+              <input
+                type="text"
+                value={content.featuresTitle || ''}
+                onChange={(event) => updateContentField('featuresTitle', event.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Section Subtitle</label>
+              <input
+                type="text"
+                value={content.featuresSubtitle || ''}
+                onChange={(event) => updateContentField('featuresSubtitle', event.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+              />
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h4 className="text-sm font-semibold text-gray-700">Feature Cards</h4>
+            <button
+              type="button"
+              onClick={() =>
+                addListItem('features', {
+                  id: `feature-${Date.now()}`,
+                  icon: 'Star',
+                  title: '',
+                  description: '',
+                  color: 'text-blue-600',
+                  bg: 'bg-blue-100',
+                })
+              }
+              className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700"
+            >
+              <Plus className="h-4 w-4" />
+              Add feature
+            </button>
+          </div>
+          {features.length === 0 ? (
+            <p className="text-sm text-gray-500">Add feature cards to highlight key capabilities.</p>
+          ) : (
+            <div className="space-y-4">
+              {features.map((feature, index) => (
+                <div key={feature.id || index} className="border border-gray-200 rounded-lg p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium text-gray-600">Feature {index + 1}</p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => moveListItem('features', index, -1)}
+                        disabled={index === 0}
+                        className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-40"
+                      >
+                        <ArrowUp className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => moveListItem('features', index, 1)}
+                        disabled={index === features.length - 1}
+                        className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-40"
+                      >
+                        <ArrowDown className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removeListItem('features', index)}
+                        className="p-1 text-red-500 hover:text-red-600"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <input
+                      type="text"
+                      value={feature.title || ''}
+                      onChange={(event) => updateListItemField('features', index, 'title', event.target.value)}
+                      className="border border-gray-300 rounded-lg px-3 py-2"
+                      placeholder="Title"
+                    />
+                    <input
+                      type="text"
+                      value={feature.icon || ''}
+                      onChange={(event) => updateListItemField('features', index, 'icon', event.target.value)}
+                      className="border border-gray-300 rounded-lg px-3 py-2"
+                      placeholder="Lucide icon name"
+                    />
+                    <input
+                      type="text"
+                      value={feature.color || ''}
+                      onChange={(event) => updateListItemField('features', index, 'color', event.target.value)}
+                      className="border border-gray-300 rounded-lg px-3 py-2"
+                      placeholder="Text color class"
+                    />
+                    <input
+                      type="text"
+                      value={feature.bg || ''}
+                      onChange={(event) => updateListItemField('features', index, 'bg', event.target.value)}
+                      className="border border-gray-300 rounded-lg px-3 py-2"
+                      placeholder="Background class"
+                    />
+                  </div>
+                  <textarea
+                    rows={2}
+                    value={feature.description || ''}
+                    onChange={(event) => updateListItemField('features', index, 'description', event.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                    placeholder="Description"
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="space-y-4">
+          <h3 className="text-lg font-semibold text-gray-900">CTA Section</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+              <input
+                type="text"
+                value={cta.title || ''}
+                onChange={(event) => updateContentObjectField('cta', 'title', event.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Button Label</label>
+              <input
+                type="text"
+                value={cta.buttonLabel || ''}
+                onChange={(event) => updateContentObjectField('cta', 'buttonLabel', event.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+            <textarea
+              rows={2}
+              value={cta.description || ''}
+              onChange={(event) => updateContentObjectField('cta', 'description', event.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2"
+            />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Button Link</label>
+              <input
+                type="text"
+                value={cta.buttonLink || ''}
+                onChange={(event) => updateContentObjectField('cta', 'buttonLink', event.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Gradient From</label>
+              <input
+                type="text"
+                value={ctaGradient.from || ''}
+                onChange={(event) => updateContentDeepField('cta', 'gradient', 'from', event.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                placeholder="#2563eb"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Gradient To</label>
+              <input
+                type="text"
+                value={ctaGradient.to || ''}
+                onChange={(event) => updateContentDeepField('cta', 'gradient', 'to', event.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                placeholder="#7c3aed"
+              />
+            </div>
+          </div>
+        </section>
+      </div>
+    );
+  };
+
+  const renderFooterEditor = () => {
+    const brand = content.brand || {};
+    const styles = content.styles || {};
+
+    return (
+      <div className="space-y-8">
+        <section className="space-y-4">
+          <h3 className="text-lg font-semibold text-gray-900">Brand</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+              <input
+                type="text"
+                value={brand.name || ''}
+                onChange={(event) => updateContentObjectField('brand', 'name', event.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Tagline</label>
+              <input
+                type="text"
+                value={brand.tagline || ''}
+                onChange={(event) => updateContentObjectField('brand', 'tagline', event.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+            <textarea
+              rows={3}
+              value={brand.description || ''}
+              onChange={(event) => updateContentObjectField('brand', 'description', event.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2"
+            />
+          </div>
+        </section>
+
+        <section className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h3 className="text-lg font-semibold text-gray-900">Quick Links</h3>
+            <button
+              type="button"
+              onClick={() => addListItem('quickLinks', { label: '', url: '' })}
+              className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700"
+            >
+              <Plus className="h-4 w-4" />
+              Add link
+            </button>
+          </div>
+          {quickLinks.length === 0 ? (
+            <p className="text-sm text-gray-500">Add links to key sections.</p>
+          ) : (
+            <div className="space-y-4">
+              {quickLinks.map((link, index) => (
+                <div key={link.id || index} className="border border-gray-200 rounded-lg p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium text-gray-600">Link {index + 1}</p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => moveListItem('quickLinks', index, -1)}
+                        disabled={index === 0}
+                        className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-40"
+                      >
+                        <ArrowUp className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => moveListItem('quickLinks', index, 1)}
+                        disabled={index === quickLinks.length - 1}
+                        className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-40"
+                      >
+                        <ArrowDown className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removeListItem('quickLinks', index)}
+                        className="p-1 text-red-500 hover:text-red-600"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <input
+                      type="text"
+                      value={link.label || ''}
+                      onChange={(event) => updateListItemField('quickLinks', index, 'label', event.target.value)}
+                      className="border border-gray-300 rounded-lg px-3 py-2"
+                      placeholder="Label"
+                    />
+                    <input
+                      type="text"
+                      value={link.url || ''}
+                      onChange={(event) => updateListItemField('quickLinks', index, 'url', event.target.value)}
+                      className="border border-gray-300 rounded-lg px-3 py-2"
+                      placeholder="URL"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">Connect Links</h3>
+              <p className="text-sm text-gray-500">Social + contact links and avatars.</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Section Title</label>
+              <input
+                type="text"
+                value={content.connectTitle || ''}
+                onChange={(event) => updateContentField('connectTitle', event.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+              />
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={() => addListItem('connectLinks', { label: '', url: '', icon: 'Mail', avatarUrl: '' })}
+              className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700"
+            >
+              <Plus className="h-4 w-4" />
+              Add connect link
+            </button>
+          </div>
+          {connectLinks.length === 0 ? (
+            <p className="text-sm text-gray-500">Add contact and social links for the footer.</p>
+          ) : (
+            <div className="space-y-4">
+              {connectLinks.map((link, index) => (
+                <div key={link.id || index} className="border border-gray-200 rounded-lg p-4 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium text-gray-600">Connect {index + 1}</p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => moveListItem('connectLinks', index, -1)}
+                        disabled={index === 0}
+                        className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-40"
+                      >
+                        <ArrowUp className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => moveListItem('connectLinks', index, 1)}
+                        disabled={index === connectLinks.length - 1}
+                        className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-40"
+                      >
+                        <ArrowDown className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removeListItem('connectLinks', index)}
+                        className="p-1 text-red-500 hover:text-red-600"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <input
+                      type="text"
+                      value={link.label || ''}
+                      onChange={(event) => updateListItemField('connectLinks', index, 'label', event.target.value)}
+                      className="border border-gray-300 rounded-lg px-3 py-2"
+                      placeholder="Label"
+                    />
+                    <input
+                      type="text"
+                      value={link.url || ''}
+                      onChange={(event) => updateListItemField('connectLinks', index, 'url', event.target.value)}
+                      className="border border-gray-300 rounded-lg px-3 py-2"
+                      placeholder="URL"
+                    />
+                    <input
+                      type="text"
+                      value={link.icon || ''}
+                      onChange={(event) => updateListItemField('connectLinks', index, 'icon', event.target.value)}
+                      className="border border-gray-300 rounded-lg px-3 py-2"
+                      placeholder="Lucide icon name"
+                    />
+                  </div>
+                  <div className="flex flex-col md:flex-row md:items-center gap-3">
+                    {link.avatarUrl ? (
+                      <img
+                        src={link.avatarUrl}
+                        alt={link.label || 'Avatar'}
+                        className="h-12 w-12 rounded-full object-cover border border-gray-200"
+                      />
+                    ) : (
+                      <div className="h-12 w-12 rounded-full border border-dashed border-gray-300 flex items-center justify-center text-xs text-gray-400">
+                        No avatar
+                      </div>
+                    )}
+                    <input
+                      type="text"
+                      value={link.avatarUrl || ''}
+                      onChange={(event) => updateListItemField('connectLinks', index, 'avatarUrl', event.target.value)}
+                      className="flex-1 border border-gray-300 rounded-lg px-3 py-2"
+                      placeholder="Avatar URL"
+                    />
+                    <label className="inline-flex items-center gap-2 text-xs bg-gray-100 px-3 py-2 rounded-lg cursor-pointer">
+                      <Upload className="h-4 w-4" />
+                      Upload
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(event) => handleFooterAvatarUpload(index, event.target.files?.[0])}
+                        className="hidden"
+                        disabled={uploading}
+                      />
+                    </label>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="space-y-4">
+          <h3 className="text-lg font-semibold text-gray-900">Styles</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Background Color</label>
+              <input
+                type="text"
+                value={styles.backgroundColor || ''}
+                onChange={(event) => updateContentObjectField('styles', 'backgroundColor', event.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                placeholder="#111827"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Text Color</label>
+              <input
+                type="text"
+                value={styles.textColor || ''}
+                onChange={(event) => updateContentObjectField('styles', 'textColor', event.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                placeholder="#d1d5db"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Heading Color</label>
+              <input
+                type="text"
+                value={styles.headingColor || ''}
+                onChange={(event) => updateContentObjectField('styles', 'headingColor', event.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                placeholder="#ffffff"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Accent Color</label>
+              <input
+                type="text"
+                value={styles.accentColor || ''}
+                onChange={(event) => updateContentObjectField('styles', 'accentColor', event.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                placeholder="#60a5fa"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Border Color</label>
+              <input
+                type="text"
+                value={styles.borderColor || ''}
+                onChange={(event) => updateContentObjectField('styles', 'borderColor', event.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                placeholder="#1f2937"
+              />
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-3">
+          <label className="block text-sm font-medium text-gray-700">Bottom Text</label>
+          <textarea
+            rows={2}
+            value={content.bottomText || ''}
+            onChange={(event) => updateContentField('bottomText', event.target.value)}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2"
+          />
+        </section>
+      </div>
+    );
+  };
 
   const renderOverviewEditor = () => (
     <div className="space-y-8">
@@ -1090,30 +1859,23 @@ const AdminPageContent = () => {
                               <div className="space-y-3">
                                 <div className="flex items-center justify-between">
                                   <p className="text-sm font-medium text-gray-600">Module Content Blocks</p>
-                                  <div className="flex flex-wrap gap-2">
-                                    {['heading', 'subheading', 'paragraph', 'list', 'link', 'image', 'video', 'pdf'].map((type) => (
-                                      <button
-                                        key={type}
-                                        type="button"
-                                        onClick={() => addModuleContentBlock(index, moduleIndex, type)}
-                                        className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-full"
-                                      >
-                                        <Plus className="h-3 w-3" />
-                                        {type}
-                                      </button>
-                                    ))}
-                                  </div>
+                                  {renderModuleBlockButtons((type) =>
+                                    addModuleContentBlock(index, moduleIndex, type)
+                                  )}
                                 </div>
                                 {moduleBlocks.length === 0 && (
                                   <p className="text-sm text-gray-500">Add content blocks to build this module.</p>
                                 )}
-                                {moduleBlocks.map((block, blockIndex) => (
+                                {moduleBlocks.map((block, blockIndex) => {
+                                  const blockLabel = getModuleBlockLabel(block.type);
+
+                                  return (
                                   <div
                                     key={block.id || `${block.type}-${blockIndex}`}
                                     className="border border-gray-200 rounded-lg p-4"
                                   >
                                     <div className="flex items-center justify-between mb-3">
-                                      <span className="text-sm font-medium text-gray-800">{block.type.toUpperCase()}</span>
+                                      <span className="text-sm font-medium text-gray-800">{blockLabel}</span>
                                       <div className="flex items-center gap-2">
                                         <button
                                           type="button"
@@ -1234,6 +1996,29 @@ const AdminPageContent = () => {
                                       </div>
                                     )}
 
+                                    {block.type === 'plain' && (
+                                      <div className="space-y-2">
+                                        <textarea
+                                          rows={8}
+                                          value={block.text || ''}
+                                          onChange={(event) =>
+                                            updateModuleContentBlockField(
+                                              index,
+                                              moduleIndex,
+                                              blockIndex,
+                                              'text',
+                                              event.target.value
+                                            )
+                                          }
+                                          className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                                          placeholder="Paste formatted content from ChatGPT (headings, lists, bold, italics)."
+                                        />
+                                        <p className="text-xs text-gray-500">
+                                          Supports markdown like # headings, - lists, **bold**, *italics*.
+                                        </p>
+                                      </div>
+                                    )}
+
                                     {['image', 'video', 'pdf'].includes(block.type) && (
                                       <div className="space-y-2">
                                         <div className="flex items-center gap-3">
@@ -1294,8 +2079,27 @@ const AdminPageContent = () => {
                                         />
                                       </div>
                                     )}
+
+                                    <div className="mt-4 border-t border-gray-100 pt-3 space-y-2">
+                                      <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <p className="text-xs font-medium text-gray-500">Module Content Blocks</p>
+                                        <button
+                                          type="button"
+                                          onClick={handleSave}
+                                          disabled={saving}
+                                          className="inline-flex items-center gap-1 text-xs border border-blue-200 text-blue-600 px-2 py-1 rounded-md hover:bg-blue-50 disabled:opacity-60"
+                                        >
+                                          <Save className="h-3 w-3" />
+                                          {saving ? 'Saving...' : 'Save'}
+                                        </button>
+                                      </div>
+                                      {renderModuleBlockButtons((type) =>
+                                        insertModuleContentBlock(index, moduleIndex, blockIndex, type)
+                                      )}
+                                    </div>
                                   </div>
-                                ))}
+                                  );
+                                })}
                               </div>
 
                               <div className="space-y-3">
@@ -2546,6 +3350,10 @@ const AdminPageContent = () => {
 
   const renderEditor = () => {
     switch (selectedSlug) {
+      case PAGE_CONTENT_SLUGS.HOME:
+        return renderHomeEditor();
+      case PAGE_CONTENT_SLUGS.FOOTER:
+        return renderFooterEditor();
       case PAGE_CONTENT_SLUGS.TEACHER_OVERVIEW:
         return renderOverviewEditor();
       case PAGE_CONTENT_SLUGS.TEACHER_COURSES:

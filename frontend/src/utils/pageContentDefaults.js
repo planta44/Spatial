@@ -1,4 +1,6 @@
 export const PAGE_CONTENT_SLUGS = {
+  HOME: 'home',
+  FOOTER: 'footer',
   TEACHER_OVERVIEW: 'teacher-training-overview',
   TEACHER_COURSES: 'teacher-training-courses',
   TEACHER_RESOURCES: 'teacher-training-resources',
@@ -6,6 +8,16 @@ export const PAGE_CONTENT_SLUGS = {
 };
 
 export const PAGE_CONTENT_OPTIONS = [
+  {
+    slug: PAGE_CONTENT_SLUGS.HOME,
+    label: 'Homepage',
+    description: 'Hero copy, stats, feature cards, and CTA settings.'
+  },
+  {
+    slug: PAGE_CONTENT_SLUGS.FOOTER,
+    label: 'Footer',
+    description: 'Footer copy, colors, quick links, and connect avatars.'
+  },
   {
     slug: PAGE_CONTENT_SLUGS.TEACHER_OVERVIEW,
     label: 'Teacher Training - Overview',
@@ -132,6 +144,114 @@ const defaultOverview = {
       theme: 'blue',
     },
   ],
+};
+
+const defaultHome = {
+  hero: {
+    title: 'Spatial AI for Music Teacher Training',
+    subtitle: 'Policy, Resources, and Scalability in Kenyan Universities',
+    description:
+      'Empowering music educators with cutting-edge spatial audio technology, comprehensive training resources, and scalable implementation frameworks.',
+    primaryCtaLabel: 'Explore Training',
+    primaryCtaLink: '/training',
+    secondaryCtaLabel: 'Browse Resources',
+    secondaryCtaLink: '/resources',
+    gradient: {
+      from: '#2563eb',
+      via: '#1d4ed8',
+      to: '#7c3aed'
+    }
+  },
+  stats: [
+    { value: 20, label: 'Universities', suffix: '+' },
+    { value: 500, label: 'Teachers Trained', suffix: '+' },
+    { value: 1000, label: 'Resources', suffix: '+' },
+    { value: 95, label: 'Satisfaction Rate', suffix: '%' }
+  ],
+  featuresTitle: 'Key Features',
+  featuresSubtitle: 'Everything you need to transform music education in your institution',
+  features: [
+    {
+      icon: 'Headphones',
+      title: 'Spatial Audio Engine',
+      description: 'Advanced 3D audio analysis and visualization tools for immersive music education.',
+      color: 'text-purple-600',
+      bg: 'bg-purple-100'
+    },
+    {
+      icon: 'GraduationCap',
+      title: 'Teacher Training',
+      description: 'Comprehensive modules designed specifically for music teacher professional development.',
+      color: 'text-blue-600',
+      bg: 'bg-blue-100'
+    },
+    {
+      icon: 'FileText',
+      title: 'Policy Framework',
+      description: 'Track and manage educational policies across multiple Kenyan universities.',
+      color: 'text-green-600',
+      bg: 'bg-green-100'
+    },
+    {
+      icon: 'TrendingUp',
+      title: 'Scalability Dashboard',
+      description: 'Monitor deployment, track metrics, and scale programs university-wide.',
+      color: 'text-orange-600',
+      bg: 'bg-orange-100'
+    },
+    {
+      icon: 'Users',
+      title: 'Collaborative Learning',
+      description: 'Connect educators across institutions to share knowledge and best practices.',
+      color: 'text-pink-600',
+      bg: 'bg-pink-100'
+    },
+    {
+      icon: 'Waves',
+      title: 'Resource Library',
+      description: 'Access curated music education materials, from theory to practical applications.',
+      color: 'text-cyan-600',
+      bg: 'bg-cyan-100'
+    }
+  ],
+  cta: {
+    title: 'Ready to Transform Music Education?',
+    description: 'Join hundreds of educators already using Spatial AI to enhance their teaching.',
+    buttonLabel: 'Get Started Today',
+    buttonLink: '/admin',
+    gradient: {
+      from: '#2563eb',
+      to: '#7c3aed'
+    }
+  }
+};
+
+const defaultFooter = {
+  brand: {
+    name: 'Spatial AI',
+    description:
+      'Transforming music teacher training through spatial audio technology and AI-powered solutions for Kenyan universities.',
+    tagline: 'Policy, Resources, and Scalability in Music Education'
+  },
+  quickLinks: [
+    { label: 'Training Programs', url: '/training' },
+    { label: 'Resource Library', url: '/resources' },
+    { label: 'Policy Framework', url: '/policies' }
+  ],
+  connectTitle: 'Connect',
+  connectLinks: [
+    { label: 'info@spatialai.edu', url: 'mailto:info@spatialai.edu', icon: 'Mail', avatarUrl: '' },
+    { label: 'GitHub', url: '#', icon: 'Github', avatarUrl: '' },
+    { label: 'LinkedIn', url: '#', icon: 'Linkedin', avatarUrl: '' }
+  ],
+  styles: {
+    backgroundColor: '#111827',
+    textColor: '#d1d5db',
+    headingColor: '#ffffff',
+    accentColor: '#60a5fa',
+    borderColor: '#1f2937'
+  },
+  bottomText: 'Spatial AI for Music Teacher Training. All rights reserved.'
 };
 
 const defaultResources = {
@@ -475,6 +595,8 @@ const defaultPolicyStats = [
 ];
 
 export const DEFAULT_PAGE_CONTENT = {
+  [PAGE_CONTENT_SLUGS.HOME]: defaultHome,
+  [PAGE_CONTENT_SLUGS.FOOTER]: defaultFooter,
   [PAGE_CONTENT_SLUGS.TEACHER_OVERVIEW]: defaultOverview,
   [PAGE_CONTENT_SLUGS.TEACHER_COURSES]: {
     title: 'Available Courses',

@@ -301,44 +301,83 @@ const TeacherTraining = () => {
       ? new Date(enrollment.completedAt)
       : new Date();
 
-    const doc = new jsPDF({ orientation: 'landscape' });
-    doc.setFillColor(245, 246, 250);
-    doc.rect(0, 0, 297, 210, 'F');
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const centerX = pageWidth / 2;
+
+    doc.setFillColor(248, 250, 252);
+    doc.rect(0, 0, pageWidth, pageHeight, 'F');
+
     doc.setDrawColor(30, 64, 175);
-    doc.setLineWidth(2);
-    doc.rect(10, 10, 277, 190);
+    doc.setLineWidth(1);
+    doc.rect(8, 8, pageWidth - 16, pageHeight - 16);
+
+    doc.setFillColor(30, 64, 175);
+    doc.rect(8, 8, pageWidth - 16, 8, 'F');
+    doc.setFillColor(59, 130, 246);
+    doc.rect(8, pageHeight - 16, pageWidth - 16, 8, 'F');
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(28);
     doc.setTextColor(30, 64, 175);
-    doc.text('Certificate of Completion', 148.5, 45, { align: 'center' });
-
-    doc.setFontSize(16);
-    doc.setTextColor(55, 65, 81);
-    doc.text('This certifies that', 148.5, 70, { align: 'center' });
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(22);
-    doc.text(userName, 148.5, 85, { align: 'center' });
+    doc.text('Certificate of Achievement', centerX, 48, { align: 'center' });
 
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(16);
-    doc.text('has successfully completed the course', 148.5, 105, { align: 'center' });
+    doc.setFontSize(14);
+    doc.setTextColor(55, 65, 81);
+    doc.text('This certificate is proudly presented to', centerX, 68, { align: 'center' });
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(26);
+    doc.setTextColor(17, 24, 39);
+    doc.text(userName, centerX, 86, { align: 'center' });
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(14);
+    doc.setTextColor(55, 65, 81);
+    doc.text('for successfully completing the professional training course', centerX, 104, { align: 'center' });
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(20);
-    doc.text(course.title, 148.5, 120, { align: 'center' });
+    doc.setTextColor(17, 24, 39);
+    doc.text(course.title, centerX, 120, { align: 'center' });
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(12);
-    doc.text(
-      `Completion Date: ${completionDate.toLocaleDateString()}`,
-      148.5,
-      145,
-      { align: 'center' }
-    );
+    doc.setTextColor(75, 85, 99);
+    doc.text(`Completed on ${completionDate.toLocaleDateString()}`, centerX, 134, { align: 'center' });
 
-    doc.text('Spatial AI Teacher Training Program', 148.5, 165, { align: 'center' });
+    doc.setTextColor(30, 64, 175);
+    doc.setFontSize(11);
+    doc.text('Spatial AI Music Teacher Training', centerX, 150, { align: 'center' });
+
+    doc.setDrawColor(156, 163, 175);
+    doc.setLineWidth(0.5);
+    doc.line(45, 165, 120, 165);
+
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(12);
+    doc.setTextColor(31, 41, 55);
+    doc.text('Dr. Amina Mwangi', 82.5, 160, { align: 'center' });
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.setTextColor(75, 85, 99);
+    doc.text('Program Director', 82.5, 172, { align: 'center' });
+
+    doc.setDrawColor(30, 64, 175);
+    doc.setLineWidth(1);
+    doc.circle(pageWidth - 60, 162, 18);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(30, 64, 175);
+    doc.text('Spatial AI', pageWidth - 60, 158, { align: 'center' });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.text('Official Stamp', pageWidth - 60, 164, { align: 'center' });
+    doc.text('Kenya', pageWidth - 60, 170, { align: 'center' });
+
     doc.save(`${slugify(course.title)}-certificate.pdf`);
   };
 
@@ -541,7 +580,7 @@ const TeacherTraining = () => {
       <h3 className="text-2xl font-bold">My Learning Progress</h3>
 
       {/* Progress Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-blue-50 p-4 rounded-lg">
           <div className="flex items-center gap-2 mb-2">
             <BookOpen className="text-blue-600" />
@@ -799,7 +838,7 @@ const TeacherTraining = () => {
         {/* Navigation Tabs */}
         <div className="mb-8">
           <div className="border-b border-gray-200">
-            <nav className="-mb-px flex space-x-8">
+            <nav className="-mb-px flex gap-6 overflow-x-auto whitespace-nowrap pb-1">
               {[
                 { id: 'overview', label: 'Overview', icon: BookOpen },
                 { id: 'courses', label: 'Courses', icon: Users },
@@ -811,7 +850,7 @@ const TeacherTraining = () => {
                   <button
                     key={tab.id}
                     onClick={() => setActiveSection(tab.id)}
-                    className={`flex items-center gap-2 py-4 px-1 border-b-2 font-medium text-sm ${
+                    className={`flex items-center gap-2 py-4 px-3 border-b-2 font-medium text-sm flex-shrink-0 ${
                       activeSection === tab.id
                         ? 'border-blue-500 text-blue-600'
                         : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'

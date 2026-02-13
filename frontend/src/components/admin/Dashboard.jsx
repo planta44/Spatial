@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import { Users, GraduationCap, FileText, TrendingUp, Activity, LogOut, BookOpen, Wand2 } from 'lucide-react';
+import { Users, GraduationCap, FileText, TrendingUp, Activity, LogOut, BookOpen, Wand2, Home, PanelBottom } from 'lucide-react';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { curriculumAPI } from '../../services/api';
+import { PAGE_CONTENT_SLUGS } from '../../utils/pageContentDefaults';
 
 const Dashboard = ({ onLogout }) => {
   const navigate = useNavigate();
@@ -210,6 +211,28 @@ const Dashboard = ({ onLogout }) => {
           </div>
           <h4 className="font-semibold text-gray-900 mb-2">Edit Page Content</h4>
           <p className="text-sm text-gray-600">Update static page copy and sections</p>
+        </button>
+
+        <button
+          onClick={() => navigate('/admin/pages', { state: { slug: PAGE_CONTENT_SLUGS.HOME } })}
+          className="bg-white p-6 rounded-lg shadow-md hover:shadow-xl transition-shadow text-left"
+        >
+          <div className="bg-sky-100 w-12 h-12 rounded-lg flex items-center justify-center mb-4">
+            <Home className="h-6 w-6 text-sky-600" />
+          </div>
+          <h4 className="font-semibold text-gray-900 mb-2">Edit Homepage</h4>
+          <p className="text-sm text-gray-600">Manage hero, stats, features, and CTA</p>
+        </button>
+
+        <button
+          onClick={() => navigate('/admin/pages', { state: { slug: PAGE_CONTENT_SLUGS.FOOTER } })}
+          className="bg-white p-6 rounded-lg shadow-md hover:shadow-xl transition-shadow text-left"
+        >
+          <div className="bg-amber-100 w-12 h-12 rounded-lg flex items-center justify-center mb-4">
+            <PanelBottom className="h-6 w-6 text-amber-600" />
+          </div>
+          <h4 className="font-semibold text-gray-900 mb-2">Edit Footer</h4>
+          <p className="text-sm text-gray-600">Update links, branding, and colors</p>
         </button>
 
         <button className="bg-white p-6 rounded-lg shadow-md hover:shadow-xl transition-shadow text-left">
